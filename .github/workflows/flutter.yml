@@ -25,16 +25,36 @@ jobs:
           channel: stable
           flutter-version: '3.27.4'
           cache: true
+
       - name: Montar projeto nativo
         run: flutter create . --org br.com.vectrawork --project-name operacao_vectra --platforms=android,ios
+
+      - name: Liberar internet e http no Android
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          t = p.read_text()
+          if 'android.permission.INTERNET' not in t:
+              t = re.sub(r'(<manifest[^>]*>)',
+                         r'\1\n    <uses-permission android:name="android.permission.INTERNET"/>'
+                         r'\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>',
+                         t, count=1)
+          if 'usesCleartextTraffic' not in t:
+              t = t.replace('<application', '<application\n        android:usesCleartextTraffic="true"', 1)
+          p.write_text(t)
+          print(t)
+          PY
+
       - name: Dependencias
         run: flutter pub get
+
       - name: Icones do app
         run: dart run flutter_launcher_icons
-      - name: Analisar o codigo
-        run: flutter analyze --no-fatal-infos || true
+
       - name: Gerar APK
         run: flutter build apk --release --dart-define=SERVER_URL=${{ env.SERVER_URL }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: operacao-vectra-android
@@ -51,6 +71,19 @@ jobs:
           cache: true
       - name: Montar projeto nativo
         run: flutter create . --org br.com.vectrawork --project-name operacao_vectra --platforms=android,ios
+      - name: Liberar http no iOS
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path('ios/Runner/Info.plist')
+          t = p.read_text()
+          if 'NSAppTransportSecurity' not in t:
+              t = t.replace('</dict>\n</plist>',
+                            '\t<key>NSAppTransportSecurity</key>\n'
+                            '\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n'
+                            '</dict>\n</plist>', 1)
+              p.write_text(t)
+          PY
       - name: Dependencias
         run: flutter pub get
       - name: Icones do app
