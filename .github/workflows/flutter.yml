@@ -9,7 +9,7 @@ on:
 
 env:
   # >>> ENDEREÇO DO SERVIDOR <<<
-  SERVER_URL: "http://192.168.34.206:8503"
+  SERVER_URL: "http://192.168.34.165:8503"
 
 jobs:
   android:
