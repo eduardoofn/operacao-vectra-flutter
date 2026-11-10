@@ -41,6 +41,10 @@ const _tipos = [
     _Campo('nome', 'Setor'),
     _Campo('capacidade', 'Capacidade (colaboradores)', numero: true),
   ]),
+  _Tipo('defeitos', 'Defeitos', 'defeito', [
+    _Campo('nome', 'Defeito'),
+    _Campo('descricao', 'Descrição (opcional)'),
+  ]),
   _Tipo('maquinas', 'Máquinas', 'máquina', [
     _Campo('codigo', 'Código'),
     _Campo('descricao', 'Descrição'),

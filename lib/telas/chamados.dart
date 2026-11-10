@@ -83,7 +83,10 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       for (final c in novos.take(3)) {
         final marca = c.prio == Prioridade.parada ? '🔴 MÁQUINA PARADA · ' : '';
         Avisos.mostrar(c.id, '${marca}Chamado #${c.id} · ${c.maquinaCodigo}',
-            '${c.setor ?? ''} — ${c.problema}'.trim());
+            <String?>[c.setor, c.defeito ?? c.problema]
+                .whereType<String>()
+                .where((x) => x.isNotEmpty)
+                .join(' — '));
       }
       if (novos.isNotEmpty) HapticFeedback.heavyImpact();
     }
@@ -100,6 +103,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
         c.maquinaCodigo,
         c.maquinaDescricao,
         c.problema,
+        c.defeito ?? '',
         c.solucao ?? '',
         c.funcionario ?? '',
         c.lider,
@@ -150,7 +154,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   Future<void> _concluir(Chamado c) async {
     final solucao = await _pedirTexto(
       titulo: 'Concluir #${c.id}',
-      subtitulo: '${c.maquinaCodigo} ${c.maquinaDescricao}\n${c.problema}',
+      subtitulo: '${c.maquinaCodigo} ${c.maquinaDescricao}\n${c.defeito ?? c.problema}',
       rotulo: 'O que foi feito?',
       dica: 'Ex.: troquei a correia e regulei a tensão',
       minimo: 5,
@@ -571,7 +575,7 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                               color: Cores.tinta2, fontWeight: FontWeight.w600, fontSize: 13)),
                     ),
                   Expanded(
-                    child: Text(c.problema,
+                    child: Text(c.defeito ?? c.problema,
                         maxLines: _aberto ? 4 : 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 13.5)),
@@ -591,12 +595,19 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Divider(height: 1, color: Cores.linha),
                 ),
+                if (c.defeito != null && c.problema.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(c.problema,
+                        style: const TextStyle(color: Cores.tinta2, fontSize: 13.5)),
+                  ),
                 if (c.solucao != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text('Feito: ${c.solucao}',
                         style: const TextStyle(color: Cores.verdeEsc, fontSize: 13.5)),
                   ),
+                _linha('Defeito', c.defeito ?? '—'),
                 _linha('Prioridade', c.prio.nome),
                 _linha('Funcionário', c.funcionario ?? '—'),
                 if (widget.mostrarLider) _linha('Líder', c.lider),
@@ -672,8 +683,10 @@ class FormNovoChamado extends StatefulWidget {
 class _FormNovoChamadoState extends State<FormNovoChamado> {
   List<Map<String, dynamic>> _maquinas = [];
   List<Map<String, dynamic>> _funcionarios = [];
+  List<Map<String, dynamic>> _defeitos = [];
   int? _maquinaId;
   int? _funcionarioId;
+  int? _defeitoId;
   String _prioridade = 'BAIXA';
   final _problema = TextEditingController();
   bool _enviando = false;
@@ -697,6 +710,7 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
       setState(() {
         _maquinas = (dados['maquinas'] as List).cast<Map<String, dynamic>>();
         _funcionarios = (dados['funcionarios'] as List).cast<Map<String, dynamic>>();
+        _defeitos = ((dados['defeitos'] ?? []) as List).cast<Map<String, dynamic>>();
         _carregando = false;
       });
     } on ErroApi catch (e) {
@@ -710,14 +724,15 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
   Future<void> _salvar() async {
     if (_maquinaId == null) return aviso(context, 'Escolha a máquina.', erro: true);
     if (_funcionarioId == null) return aviso(context, 'Escolha o funcionário.', erro: true);
-    if (_problema.text.trim().length < 3) {
-      return aviso(context, 'Conte rapidinho o que está acontecendo.', erro: true);
+    if (_defeitoId == null && _problema.text.trim().length < 3) {
+      return aviso(context, 'Escolha o defeito ou descreva o problema.', erro: true);
     }
     setState(() => _enviando = true);
     try {
       final r = await Api.post('/api/chamados', {
         'maquina_id': _maquinaId,
         'funcionario_id': _funcionarioId,
+        'defeito_id': _defeitoId,
         'problema': _problema.text.trim(),
         'prioridade': _prioridade,
       }) as Map<String, dynamic>;
@@ -774,13 +789,32 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
                     onChanged: (v) => setState(() => _funcionarioId = v),
                   ),
                   const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: _defeitoId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Defeito'),
+                    items: _defeitos
+                        .map((d) => DropdownMenuItem(
+                              value: d['id'] as int,
+                              child: Text('${d['nome']}', overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _defeitoId = v),
+                  ),
+                  if (_defeitos.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text('Cadastre os defeitos em Cadastros > Defeitos.',
+                          style: TextStyle(color: Cores.tinta2, fontSize: 12.5)),
+                    ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _problema,
-                    maxLines: 3,
+                    maxLines: 2,
                     maxLength: 1000,
                     decoration: const InputDecoration(
-                      labelText: 'O que está acontecendo?',
-                      hintText: 'Ex.: agulha quebrando, barulho no motor, não liga',
+                      labelText: 'Detalhe (opcional)',
+                      hintText: 'Ex.: começou depois da troca de peça',
                     ),
                   ),
                   const Text('Prioridade',

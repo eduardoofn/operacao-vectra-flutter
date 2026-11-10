@@ -73,6 +73,7 @@ class Chamado {
   final String problema;
   final String? solucao;
   final String? setor;
+  final String? defeito;
   final String maquinaCodigo;
   final String maquinaDescricao;
   final String? funcionario;
@@ -91,6 +92,7 @@ class Chamado {
         problema = (j['problema'] ?? '').toString(),
         solucao = j['solucao']?.toString(),
         setor = j['setor']?.toString(),
+        defeito = j['defeito_nome']?.toString(),
         maquinaCodigo = (j['maq_codigo'] ?? '').toString(),
         maquinaDescricao = (j['maq_descricao'] ?? '').toString(),
         funcionario = j['func_nome']?.toString(),
