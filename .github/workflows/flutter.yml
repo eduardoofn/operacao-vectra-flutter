@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 env:
-  # >>> ENDEREÇO DO SERVIDOR <<<
+  # >>> ENDEREÇO DO SERVIDOR — troque pelo IP da máquina que roda o python app.py <<<
   SERVER_URL: "http://192.168.34.165:8503"
 
 jobs:
@@ -29,6 +29,8 @@ jobs:
       - name: Montar projeto nativo
         run: flutter create . --org br.com.vectrawork --project-name operacao_vectra --platforms=android,ios
 
+      # sem este passo o APK de release fica sem permissão de internet
+      # e o Android bloqueia endereços http — dá "sem conexão com o servidor"
       - name: Liberar internet e http no Android
         run: |
           python3 - <<'PY'
@@ -52,6 +54,9 @@ jobs:
       - name: Icones do app
         run: dart run flutter_launcher_icons
 
+      - name: Analisar o codigo
+        run: flutter analyze --no-fatal-infos || true
+
       - name: Gerar APK
         run: flutter build apk --release --dart-define=SERVER_URL=${{ env.SERVER_URL }}
 
@@ -69,8 +74,10 @@ jobs:
           channel: stable
           flutter-version: '3.27.4'
           cache: true
+
       - name: Montar projeto nativo
         run: flutter create . --org br.com.vectrawork --project-name operacao_vectra --platforms=android,ios
+
       - name: Liberar http no iOS
         run: |
           python3 - <<'PY'
@@ -84,17 +91,22 @@ jobs:
                             '</dict>\n</plist>', 1)
               p.write_text(t)
           PY
+
       - name: Dependencias
         run: flutter pub get
+
       - name: Icones do app
         run: dart run flutter_launcher_icons
+
       - name: Gerar build iOS (sem assinatura)
         run: flutter build ios --release --no-codesign --dart-define=SERVER_URL=${{ env.SERVER_URL }}
+
       - name: Empacotar
         run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
           zip -qr operacao-vectra-ios.ipa Payload
+
       - uses: actions/upload-artifact@v4
         with:
           name: operacao-vectra-ios
