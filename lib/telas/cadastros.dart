@@ -70,6 +70,8 @@ class _TelaCadastrosState extends State<TelaCadastros> {
   List<String> _setores = [];
   bool _carregando = true;
   String _busca = '';
+  String? _erro;
+  String _carregado = '';   // de qual cadastro são as linhas em tela
 
   _Tipo get _tipo => _tipos[_indice];
 
@@ -80,20 +82,31 @@ class _TelaCadastrosState extends State<TelaCadastros> {
   }
 
   Future<void> _carregar() async {
-    setState(() => _carregando = true);
+    final alvo = _tipo.chave;
+    setState(() {
+      _carregando = true;
+      _erro = null;
+      _linhas = [];          // limpa antes, para não exibir o cadastro anterior
+      _carregado = '';
+    });
     try {
-      final dados = await Api.get('/api/cad/${_tipo.chave}') as List;
+      final dados = await Api.get('/api/cad/$alvo') as List;
       final listas = await Api.get('/api/listas') as Map<String, dynamic>;
-      if (!mounted) return;
+      if (!mounted || alvo != _tipo.chave) return;   // o usuário já trocou de aba
       setState(() {
         _linhas = dados.cast<Map<String, dynamic>>();
         _setores = (listas['setores'] as List).map((s) => s['nome'].toString()).toList();
+        _carregado = alvo;
         _carregando = false;
       });
     } on ErroApi catch (e) {
-      if (!mounted) return;
-      setState(() => _carregando = false);
-      aviso(context, e.mensagem, erro: true);
+      if (!mounted || alvo != _tipo.chave) return;
+      setState(() {
+        _carregando = false;
+        _erro = e.status == 404
+            ? 'Este cadastro ainda não existe no servidor. Rode o script sql/06_defeitos.sql e atualize o app.py.'
+            : e.mensagem;
+      });
     }
   }
 
@@ -123,8 +136,9 @@ class _TelaCadastrosState extends State<TelaCadastros> {
   @override
   Widget build(BuildContext context) {
     final q = _busca.toLowerCase();
-    final visiveis =
-        _linhas.where((r) => q.isEmpty || _resumo(r).toLowerCase().contains(q)).toList();
+    final visiveis = _carregado != _tipo.chave
+        ? <Map<String, dynamic>>[]
+        : _linhas.where((r) => q.isEmpty || _resumo(r).toLowerCase().contains(q)).toList();
 
     return Scaffold(
       backgroundColor: Cores.papel,
@@ -173,6 +187,24 @@ class _TelaCadastrosState extends State<TelaCadastros> {
           Expanded(
             child: _carregando
                 ? const Center(child: CircularProgressIndicator())
+                : _erro != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline, size: 46, color: Cores.tinta2),
+                          const SizedBox(height: 12),
+                          Text(_erro!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Cores.tinta2)),
+                          const SizedBox(height: 16),
+                          FilledButton(onPressed: _carregar, child: const Text('Tentar de novo')),
+                        ],
+                      ),
+                    ),
+                  )
                 : RefreshIndicator(
                     onRefresh: _carregar,
                     child: ListView.builder(
