@@ -33,7 +33,10 @@ class _TelaPresencaState extends State<TelaPresenca> {
   }
 
   int? _faltas(Map<String, dynamic>? r) {
-    if (r == null || r['capacidade'] == null) return null;
+    if (r == null) return null;
+    // vale a falta que o líder lançou; sem ela, calcula pela capacidade
+    if (r['faltas'] != null) return _num(r['faltas']);
+    if (r['capacidade'] == null) return null;
     final f = _num(r['capacidade']) -
         _num(r['presentes']) -
         _num(r['atestados']) -
@@ -250,6 +253,7 @@ class _FormPresenca extends StatefulWidget {
 
 class _FormPresencaState extends State<_FormPresenca> {
   late final TextEditingController _presentes;
+  late final TextEditingController _faltas;
   late final TextEditingController _atestados;
   late final TextEditingController _bh;
   late final TextEditingController _ferias;
@@ -265,6 +269,7 @@ class _FormPresencaState extends State<_FormPresenca> {
     super.initState();
     final r = widget.registro;
     _presentes = TextEditingController(text: _txt(r?['presentes']));
+    _faltas = TextEditingController(text: _txt(r?['faltas']));
     _atestados = TextEditingController(text: _txt(r?['atestados']));
     _bh = TextEditingController(text: _txt(r?['bh']));
     _ferias = TextEditingController(text: _txt(r?['ferias']));
@@ -275,7 +280,7 @@ class _FormPresencaState extends State<_FormPresenca> {
 
   @override
   void dispose() {
-    for (final c in [_presentes, _atestados, _bh, _ferias, _nomesFerias, _nomesBh, _obs]) {
+    for (final c in [_presentes, _faltas, _atestados, _bh, _ferias, _nomesFerias, _nomesBh, _obs]) {
       c.dispose();
     }
     super.dispose();
@@ -295,6 +300,7 @@ class _FormPresencaState extends State<_FormPresenca> {
         'data': dataIso(widget.data),
         'setor': widget.setor,
         'presentes': _presentes.text,
+        'faltas': _faltas.text,
         'atestados': _atestados.text,
         'bh': _bh.text,
         'ferias': _ferias.text,
@@ -320,7 +326,18 @@ class _FormPresencaState extends State<_FormPresenca> {
             controller: c,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(labelText: rotulo),
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) {
+              // mexeu em presentes, atestados, BH ou férias? a falta se ajusta sozinha
+              if (!identical(c, _faltas) && _capacidade != null) {
+                final sobra = _capacidade! -
+                    _v(_presentes) -
+                    _v(_atestados) -
+                    _v(_bh) -
+                    _v(_ferias);
+                _faltas.text = (sobra < 0 ? 0 : sobra).toString();
+              }
+              setState(() {});
+            },
           ),
         ),
       );
@@ -330,7 +347,8 @@ class _FormPresencaState extends State<_FormPresenca> {
   @override
   Widget build(BuildContext context) {
     final cap = _capacidade;
-    final usados = _v(_presentes) + _v(_atestados) + _v(_bh) + _v(_ferias);
+    final semFalta = _v(_presentes) + _v(_atestados) + _v(_bh) + _v(_ferias);
+    final usados = semFalta + _v(_faltas);
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 18, 20, MediaQuery.of(context).viewInsets.bottom + 20),
       child: SingleChildScrollView(
@@ -344,12 +362,18 @@ class _FormPresencaState extends State<_FormPresenca> {
             Text(
               cap == null
                   ? 'Capacidade não cadastrada para este setor.'
-                  : 'Capacidade $cap · lançados $usados · faltas ${cap - usados < 0 ? 0 : cap - usados}',
+                  : 'Capacidade $cap · lançados $usados' +
+                      (usados == cap
+                          ? ' ✓'
+                          : usados < cap
+                              ? ' · faltam ${cap - usados} para fechar'
+                              : ' · ${usados - cap} a mais'),
               style: const TextStyle(color: Cores.tinta2),
             ),
             const SizedBox(height: 16),
-            Row(children: [_numero('Presentes', _presentes), _numero('Atestados', _atestados)]),
-            Row(children: [_numero('Banco de horas', _bh), _numero('Férias', _ferias)]),
+            Row(children: [_numero('Presentes', _presentes), _numero('Faltas', _faltas)]),
+            Row(children: [_numero('Atestados', _atestados), _numero('Banco de horas', _bh)]),
+            Row(children: [_numero('Férias', _ferias), const Expanded(child: SizedBox())]),
             TextField(
               controller: _nomesFerias,
               decoration: const InputDecoration(

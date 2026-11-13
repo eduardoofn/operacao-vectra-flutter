@@ -684,6 +684,8 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
   List<Map<String, dynamic>> _maquinas = [];
   List<Map<String, dynamic>> _funcionarios = [];
   List<Map<String, dynamic>> _defeitos = [];
+  List<String> _setores = [];
+  String? _setor;
   int? _maquinaId;
   int? _funcionarioId;
   int? _defeitoId;
@@ -711,6 +713,7 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
         _maquinas = (dados['maquinas'] as List).cast<Map<String, dynamic>>();
         _funcionarios = (dados['funcionarios'] as List).cast<Map<String, dynamic>>();
         _defeitos = ((dados['defeitos'] ?? []) as List).cast<Map<String, dynamic>>();
+        _setores = ((dados['setores'] ?? []) as List).map((s) => s['nome'].toString()).toList();
         _carregando = false;
       });
     } on ErroApi catch (e) {
@@ -733,6 +736,7 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
         'maquina_id': _maquinaId,
         'funcionario_id': _funcionarioId,
         'defeito_id': _defeitoId,
+        'setor': _setor ?? '',
         'problema': _problema.text.trim(),
         'prioridade': _prioridade,
       }) as Map<String, dynamic>;
@@ -773,7 +777,15 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
                                   overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
-                    onChanged: (v) => setState(() => _maquinaId = v),
+                    onChanged: (v) => setState(() {
+                      _maquinaId = v;
+                      // o setor da máquina escolhida já entra preenchido
+                      final m = _maquinas.firstWhere((x) => x['id'] == v, orElse: () => {});
+                      final setorMaquina = m['setor']?.toString();
+                      _setor = (setorMaquina != null && _setores.contains(setorMaquina))
+                          ? setorMaquina
+                          : null;
+                    }),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
@@ -787,6 +799,24 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
                             ))
                         .toList(),
                     onChanged: (v) => setState(() => _funcionarioId = v),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _setor,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Setor',
+                      helperText: _maquinaId == null
+                          ? 'Escolha a máquina para preencher o setor.'
+                          : _setor == null
+                              ? 'Máquina sem setor cadastrado — escolha aqui.'
+                              : null,
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Usar o setor da máquina')),
+                      ..._setores.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                    ],
+                    onChanged: (v) => setState(() => _setor = v),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
