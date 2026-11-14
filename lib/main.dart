@@ -181,14 +181,15 @@ class _InicioState extends State<Inicio> {
     final indice = _aba.clamp(0, destinos.length - 1);
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 12,
+        titleSpacing: 10,
+        toolbarHeight: 48,
         title: Row(
           children: [
-            Image.asset('assets/logo.png', height: 26),
-            const SizedBox(width: 10),
+            Image.asset('assets/logo.png', height: 22),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(destinos[indice].nome,
-                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                  style: const TextStyle(fontSize: 17.5, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -197,20 +198,21 @@ class _InicioState extends State<Inicio> {
             child: Padding(
               padding: const EdgeInsets.only(right: 4),
               child: CircleAvatar(
-                radius: 16,
+                radius: 14,
                 backgroundColor: const Color(0xFFE6F4E2),
                 child: Text(
                   widget.usuario.nome.isEmpty ? '?' : widget.usuario.nome[0].toUpperCase(),
                   style: const TextStyle(
-                      color: Cores.verdeEsc, fontWeight: FontWeight.w700, fontSize: 15),
+                      color: Cores.verdeEsc, fontWeight: FontWeight.w700, fontSize: 13.5),
                 ),
               ),
             ),
           ),
           IconButton(
             tooltip: 'Sair',
+            visualDensity: VisualDensity.compact,
             onPressed: _sair,
-            icon: const Icon(Icons.logout, size: 20),
+            icon: const Icon(Icons.logout, size: 19),
           ),
         ],
         bottom: PreferredSize(
@@ -225,12 +227,12 @@ class _InicioState extends State<Inicio> {
       bottomNavigationBar: destinos.length < 2
           ? null
           : NavigationBar(
-              height: 64,
+              height: 56,
               selectedIndex: indice,
               onDestinationSelected: (i) => setState(() => _aba = i),
               backgroundColor: Colors.white,
               indicatorColor: const Color(0xFFE6F4E2),
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
               destinations: destinos
                   .map((d) => NavigationDestination(
                         icon: Icon(d.icone),

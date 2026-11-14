@@ -34,8 +34,7 @@ class _TelaPresencaState extends State<TelaPresenca> {
 
   int? _faltas(Map<String, dynamic>? r) {
     if (r == null) return null;
-    // vale a falta que o líder lançou; sem ela, calcula pela capacidade
-    if (r['faltas'] != null) return _num(r['faltas']);
+    if (r['faltas'] != null) return _num(r['faltas']);   // vale a falta lançada
     if (r['capacidade'] == null) return null;
     final f = _num(r['capacidade']) -
         _num(r['presentes']) -
@@ -116,7 +115,7 @@ class _TelaPresencaState extends State<TelaPresenca> {
           : RefreshIndicator(
               onRefresh: _carregar,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 86),
                 children: [
                   Row(
                     children: [
@@ -163,13 +162,16 @@ class _TelaPresencaState extends State<TelaPresenca> {
                         : null;
                     return Card(
                       elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 8),
+                      margin: const EdgeInsets.only(bottom: 6),
                       color: r == null ? const Color(0xFFFFFAF0) : Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                         side: const BorderSide(color: Cores.linha),
                       ),
                       child: ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                         onTap: () => _lancar(nome),
                         title: Text(nome, style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text(
@@ -213,7 +215,7 @@ class _Indicador extends StatelessWidget {
   Widget build(BuildContext context) => Expanded(
         child: Container(
           margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 11),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
@@ -224,7 +226,7 @@ class _Indicador extends StatelessWidget {
             children: [
               Text(valor,
                   style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w700,
                       color: alerta ? Cores.vermelho : Cores.tinta)),
               Text(rotulo, style: const TextStyle(fontSize: 12.5, color: Cores.tinta2)),
@@ -330,10 +332,7 @@ class _FormPresencaState extends State<_FormPresenca> {
               // mexeu em presentes, atestados, BH ou férias? a falta se ajusta sozinha
               if (!identical(c, _faltas) && _capacidade != null) {
                 final sobra = _capacidade! -
-                    _v(_presentes) -
-                    _v(_atestados) -
-                    _v(_bh) -
-                    _v(_ferias);
+                    _v(_presentes) - _v(_atestados) - _v(_bh) - _v(_ferias);
                 _faltas.text = (sobra < 0 ? 0 : sobra).toString();
               }
               setState(() {});
@@ -347,8 +346,7 @@ class _FormPresencaState extends State<_FormPresenca> {
   @override
   Widget build(BuildContext context) {
     final cap = _capacidade;
-    final semFalta = _v(_presentes) + _v(_atestados) + _v(_bh) + _v(_ferias);
-    final usados = semFalta + _v(_faltas);
+    final usados = _v(_presentes) + _v(_faltas) + _v(_atestados) + _v(_bh) + _v(_ferias);
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 18, 20, MediaQuery.of(context).viewInsets.bottom + 20),
       child: SingleChildScrollView(
@@ -362,12 +360,7 @@ class _FormPresencaState extends State<_FormPresenca> {
             Text(
               cap == null
                   ? 'Capacidade não cadastrada para este setor.'
-                  : 'Capacidade $cap · lançados $usados' +
-                      (usados == cap
-                          ? ' ✓'
-                          : usados < cap
-                              ? ' · faltam ${cap - usados} para fechar'
-                              : ' · ${usados - cap} a mais'),
+                  : 'Capacidade $cap · lançados $usados · faltas ${cap - usados < 0 ? 0 : cap - usados}',
               style: const TextStyle(color: Cores.tinta2),
             ),
             const SizedBox(height: 16),

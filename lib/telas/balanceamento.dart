@@ -224,7 +224,7 @@ class _TelaBalanceamentoState extends State<TelaBalanceamento>
               ],
             )
           : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 90),
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 88),
               itemCount: lista.length,
               itemBuilder: (_, i) {
                 final b = lista[i];
@@ -234,7 +234,7 @@ class _TelaBalanceamentoState extends State<TelaBalanceamento>
                     b.necessidadeEm!.isBefore(Relogio.agora);
                 return Card(
                   elevation: 0,
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: 6),
                   color: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -250,7 +250,7 @@ class _TelaBalanceamentoState extends State<TelaBalanceamento>
                             width: 5),
                       ),
                     ),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

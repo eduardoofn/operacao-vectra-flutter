@@ -208,20 +208,22 @@ class _TelaCadastrosState extends State<TelaCadastros> {
                 : RefreshIndicator(
                     onRefresh: _carregar,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 90),
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 88),
                       itemCount: visiveis.length,
                       itemBuilder: (_, i) {
                         final r = visiveis[i];
                         final ativo = r['ativo'] == true || r['ativo'] == 1;
                         return Card(
                           elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 6),
+                          margin: const EdgeInsets.only(bottom: 5),
                           color: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                             side: const BorderSide(color: Cores.linha),
                           ),
                           child: ListTile(
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
                             onTap: () => _editar(r),
                             title: Text(_resumo(r),
                                 style: TextStyle(

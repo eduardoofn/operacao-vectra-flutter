@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../comum.dart';
 import '../notificacoes.dart';
+import '../seletor.dart';
 
 class TelaChamados extends StatefulWidget {
   final Usuario usuario;
@@ -283,16 +284,18 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     onChanged: (v) => setState(() => _busca = v),
+                    textInputAction: TextInputAction.search,
                     decoration: const InputDecoration(
                       isDense: true,
-                      prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Buscar máquina, problema ou nº',
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      prefixIcon: Icon(Icons.search, size: 19),
+                      hintText: 'Buscar máquina, defeito ou nº',
                     ),
                   ),
                 ),
@@ -322,6 +325,9 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
               labelColor: Cores.tinta,
               indicatorColor: Cores.verdeEsc,
               indicatorWeight: 3,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              labelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(fontSize: 13.5),
               tabs: [
                 for (final s in _situacoes)
                   Tab(
@@ -404,7 +410,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
               ],
             )
           : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 90),
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 88),
               itemCount: lista.length,
               itemBuilder: (_, i) => _CartaoChamado(
                 chamado: lista[i],
@@ -503,7 +509,7 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
     }
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(
@@ -524,7 +530,7 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
               ),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -607,6 +613,7 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                     child: Text('Feito: ${c.solucao}',
                         style: const TextStyle(color: Cores.verdeEsc, fontSize: 13.5)),
                   ),
+                _linha('Setor', c.setor ?? '—'),
                 _linha('Defeito', c.defeito ?? '—'),
                 _linha('Prioridade', c.prio.nome),
                 _linha('Funcionário', c.funcionario ?? '—'),
@@ -642,9 +649,9 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-                width: 92,
+                width: 84,
                 child: Text(rotulo,
-                    style: const TextStyle(color: Cores.tinta2, fontSize: 13))),
+                    style: const TextStyle(color: Cores.tinta2, fontSize: 12.5))),
             Expanded(
                 child: Text(valor,
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
@@ -685,10 +692,10 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
   List<Map<String, dynamic>> _funcionarios = [];
   List<Map<String, dynamic>> _defeitos = [];
   List<String> _setores = [];
-  String? _setor;
   int? _maquinaId;
   int? _funcionarioId;
   int? _defeitoId;
+  String? _setor;
   String _prioridade = 'BAIXA';
   final _problema = TextEditingController();
   bool _enviando = false;
@@ -704,6 +711,28 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
   void dispose() {
     _problema.dispose();
     super.dispose();
+  }
+
+  List<Opcao> get _opcoesMaquina => _maquinas
+      .map((m) => Opcao(m['id'] as int, '${m['codigo']} — ${m['descricao']}',
+          m['setor']?.toString()))
+      .toList();
+
+  List<Opcao> get _opcoesFuncionario => _funcionarios
+      .map((f) => Opcao(f['id'] as int, '${f['nome']}',
+          [f['matricula'], f['setor']].where((x) => x != null).join(' · ')))
+      .toList();
+
+  List<Opcao> get _opcoesDefeito => _defeitos
+      .map((d) => Opcao(d['id'] as int, '${d['nome']}', d['descricao']?.toString()))
+      .toList();
+
+  Opcao? _acha(List<Opcao> lista, Object? valor) {
+    if (valor == null) return null;
+    for (final o in lista) {
+      if (o.valor == valor) return o;
+    }
+    return null;
   }
 
   Future<void> _carregarListas() async {
@@ -766,70 +795,49 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
                   const Text('Abrir chamado',
                       style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
-                    value: _maquinaId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Máquina'),
-                    items: _maquinas
-                        .map((m) => DropdownMenuItem(
-                              value: m['id'] as int,
-                              child: Text('${m['codigo']} — ${m['descricao']}',
-                                  overflow: TextOverflow.ellipsis),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _maquinaId = v;
+                  CampoBusca(
+                    rotulo: 'Máquina',
+                    dica: 'Toque para buscar por código ou nome',
+                    opcoes: _opcoesMaquina,
+                    escolhida: _acha(_opcoesMaquina, _maquinaId),
+                    aoEscolher: (o) => setState(() {
+                      _maquinaId = o?.valor as int?;
                       // o setor da máquina escolhida já entra preenchido
-                      final m = _maquinas.firstWhere((x) => x['id'] == v, orElse: () => {});
+                      final m = _maquinas.firstWhere((x) => x['id'] == _maquinaId,
+                          orElse: () => <String, dynamic>{});
                       final setorMaquina = m['setor']?.toString();
                       _setor = (setorMaquina != null && _setores.contains(setorMaquina))
                           ? setorMaquina
                           : null;
                     }),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: _funcionarioId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Funcionário'),
-                    items: _funcionarios
-                        .map((f) => DropdownMenuItem(
-                              value: f['id'] as int,
-                              child: Text('${f['nome']}', overflow: TextOverflow.ellipsis),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() => _funcionarioId = v),
+                  CampoBusca(
+                    rotulo: 'Funcionário',
+                    dica: 'Toque para buscar por nome ou matrícula',
+                    opcoes: _opcoesFuncionario,
+                    escolhida: _acha(_opcoesFuncionario, _funcionarioId),
+                    aoEscolher: (o) => setState(() => _funcionarioId = o?.valor as int?),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _setor,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Setor',
-                      helperText: _maquinaId == null
-                          ? 'Escolha a máquina para preencher o setor.'
-                          : _setor == null
-                              ? 'Máquina sem setor cadastrado — escolha aqui.'
-                              : null,
-                    ),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Usar o setor da máquina')),
-                      ..._setores.map((s) => DropdownMenuItem(value: s, child: Text(s))),
-                    ],
-                    onChanged: (v) => setState(() => _setor = v),
+                  CampoBusca(
+                    rotulo: 'Defeito',
+                    dica: 'Toque para buscar o defeito',
+                    opcoes: _opcoesDefeito,
+                    escolhida: _acha(_opcoesDefeito, _defeitoId),
+                    podeLimpar: true,
+                    aoEscolher: (o) => setState(() => _defeitoId = o?.valor as int?),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: _defeitoId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Defeito'),
-                    items: _defeitos
-                        .map((d) => DropdownMenuItem(
-                              value: d['id'] as int,
-                              child: Text('${d['nome']}', overflow: TextOverflow.ellipsis),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() => _defeitoId = v),
+                  CampoBusca(
+                    rotulo: 'Setor',
+                    dica: 'Usar o setor da máquina',
+                    opcoes: _setores.map((s) => Opcao(s, s)).toList(),
+                    escolhida: _setor == null ? null : Opcao(_setor!, _setor!),
+                    podeLimpar: true,
+                    ajuda: _maquinaId == null
+                        ? 'Escolha a máquina para preencher o setor.'
+                        : _setor == null
+                            ? 'Máquina sem setor cadastrado — escolha aqui.'
+                            : null,
+                    aoEscolher: (o) => setState(() => _setor = o?.valor as String?),
                   ),
                   if (_defeitos.isEmpty)
                     const Padding(
