@@ -146,6 +146,15 @@ class _InicioState extends State<Inicio> {
         _Destino('Chamados', Icons.build_outlined, Icons.build, TelaChamados(usuario: u)),
       ];
     }
+    if (u.ehSupervisao) {
+      // Supervisão acompanha os números: abre direto na presença, tudo em leitura.
+      return [
+        _Destino('Presença', Icons.groups_outlined, Icons.groups, TelaPresenca(usuario: u)),
+        _Destino('Chamados', Icons.build_outlined, Icons.build, TelaChamados(usuario: u)),
+        _Destino('Balanceamento', Icons.balance_outlined, Icons.balance,
+            TelaBalanceamento(usuario: u)),
+      ];
+    }
     return [
       _Destino('Chamados', Icons.build_outlined, Icons.build, TelaChamados(usuario: u)),
       _Destino('Presença', Icons.groups_outlined, Icons.groups, TelaPresenca(usuario: u)),
@@ -194,6 +203,22 @@ class _InicioState extends State<Inicio> {
           ],
         ),
         actions: [
+          if (widget.usuario.soConsulta)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE6F4E2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('Só consulta',
+                    style: TextStyle(
+                        color: Cores.verdeEsc,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 4),

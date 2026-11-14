@@ -34,10 +34,16 @@ class Usuario {
   bool get ehLider => perfil == 'LIDER';
   bool get ehEngenharia => perfil == 'ENGENHARIA';
   bool get ehGestor => perfil == 'ADMIN';
+  bool get ehSupervisao => perfil == 'SUPERVISAO';
+
+  /// Perfil que só acompanha os números: não abre, não atende, não lança nada.
+  bool get soConsulta => ehSupervisao;
+
   String get perfilNome => const {
         'LIDER': 'Líder',
         'MECANICO': 'Mecânico',
         'ENGENHARIA': 'Engenharia',
+        'SUPERVISAO': 'Supervisão',
         'ADMIN': 'Gestor',
       }[perfil] ??
       perfil;

@@ -33,6 +33,7 @@ const _perfis = {
   'LIDER': 'Líder',
   'MECANICO': 'Mecânico',
   'ENGENHARIA': 'Engenharia',
+  'SUPERVISAO': 'Supervisão',
   'ADMIN': 'Gestor',
 };
 

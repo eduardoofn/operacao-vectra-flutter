@@ -17,6 +17,9 @@ class _TelaPresencaState extends State<TelaPresenca> {
   bool _carregando = true;
   String? _erro;
 
+  bool get _podeLancar =>
+      !widget.usuario.ehMecanico && !widget.usuario.soConsulta;
+
   @override
   void initState() {
     super.initState();
@@ -80,7 +83,7 @@ class _TelaPresencaState extends State<TelaPresenca> {
   }
 
   Future<void> _lancar(String setor) async {
-    if (widget.usuario.ehMecanico) return;
+    if (widget.usuario.ehMecanico || widget.usuario.soConsulta) return;
     final salvou = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -176,7 +179,7 @@ class _TelaPresencaState extends State<TelaPresenca> {
                         title: Text(nome, style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text(
                           r == null
-                              ? 'Ainda não lançado${widget.usuario.ehMecanico ? '' : ' — toque para lançar'}'
+                              ? 'Ainda não lançado${_podeLancar ? ' — toque para lançar' : ''}'
                               : 'Capacidade $cap · presentes ${_num(r['presentes'])} · faltas ${f ?? 0}'
                                   '\nAtestados ${_num(r['atestados'])} · BH ${_num(r['bh'])} · férias ${_num(r['ferias'])}',
                           style: const TextStyle(fontSize: 13, height: 1.4),

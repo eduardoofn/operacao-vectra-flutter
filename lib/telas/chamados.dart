@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../comum.dart';
 import '../notificacoes.dart';
+import '../parada.dart';
 import '../seletor.dart';
 
 class TelaChamados extends StatefulWidget {
@@ -29,6 +30,13 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   String _busca = '';
   int _dias = 7;
 
+  // fechamento do dia: quanto tempo de máquina parada o grupo acumulou
+  Parada? _parada;
+  DateTime? _paradaDia;          // null = hoje
+  bool _paradaAberto = false;
+
+  bool get _vePainelParada => !widget.usuario.ehMecanico;
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +54,22 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     _relogio?.cancel();
     _abas.dispose();
     super.dispose();
+  }
+
+  /// O painel é um extra: se falhar, a tela de chamados continua normal.
+  Future<void> _carregarParadas() async {
+    if (!_vePainelParada) return;
+    final d = _paradaDia;
+    final sufixo = d == null
+        ? ''
+        : '?data=${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      final dados = await Api.get('/api/paradas$sufixo') as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() => _parada = Parada.deJson(dados));
+    } catch (_) {
+      // servidor antigo ainda sem o endpoint: segue sem o painel
+    }
   }
 
   Future<void> _carregar({bool silencioso = false}) async {
@@ -68,6 +92,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
         final meus = lista.any((c) => c.emAndamento && c.mecanicoId == widget.usuario.id);
         if (meus) _abas.animateTo(1);
       }
+      _carregarParadas();
     } on ErroApi catch (e) {
       if (!mounted) return;
       setState(() {
@@ -132,12 +157,12 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     return lista;
   }
 
-  bool get _podeAbrir => !widget.usuario.ehMecanico;
-  bool _podeAtender(Chamado c) =>
+  bool get _podeAbrir => !widget.usuario.ehMecanico && !widget.usuario.soConsulta;
+  bool _podeAtender(Chamado c) => !widget.usuario.soConsulta &&
       c.aberto && (widget.usuario.ehMecanico || widget.usuario.ehGestor);
-  bool _podeConcluir(Chamado c) =>
+  bool _podeConcluir(Chamado c) => !widget.usuario.soConsulta &&
       c.emAndamento && (c.mecanicoId == widget.usuario.id || widget.usuario.ehGestor);
-  bool _podeCancelar(Chamado c) =>
+  bool _podeCancelar(Chamado c) => !widget.usuario.soConsulta &&
       c.aberto && (c.liderId == widget.usuario.id || widget.usuario.ehGestor);
 
   Future<void> _atender(Chamado c) async {
@@ -318,6 +343,20 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
               ],
             ),
           ),
+          if (_vePainelParada)
+            PainelParada(
+              parada: _parada,
+              ehLider: widget.usuario.ehLider,
+              aberto: _paradaAberto,
+              aoAlternar: () => setState(() => _paradaAberto = !_paradaAberto),
+              aoTrocarDia: (d) {
+                setState(() {
+                  _paradaDia = d;
+                  _parada = null;
+                });
+                _carregarParadas();
+              },
+            ),
           Container(
             color: Colors.white,
             child: TabBar(

@@ -22,8 +22,10 @@ class _TelaBalanceamentoState extends State<TelaBalanceamento>
   String? _erro;
   int _dias = 30;
 
-  bool get _podeSolicitar => widget.usuario.ehLider || widget.usuario.ehGestor;
-  bool get _podeAtender => widget.usuario.ehEngenharia || widget.usuario.ehGestor;
+  bool get _podeSolicitar => !widget.usuario.soConsulta &&
+      (widget.usuario.ehLider || widget.usuario.ehGestor);
+  bool get _podeAtender => !widget.usuario.soConsulta &&
+      (widget.usuario.ehEngenharia || widget.usuario.ehGestor);
 
   @override
   void initState() {
