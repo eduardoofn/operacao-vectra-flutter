@@ -9,7 +9,7 @@ on:
 
 env:
   # >>> ENDEREÇO DO SERVIDOR — troque pelo IP da máquina que roda o python app.py <<<
-  SERVER_URL: "http://192.168.34.118:8503"
+  SERVER_URL: "http://192.168.34.34:8503"
 
 jobs:
   android:
