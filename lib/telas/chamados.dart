@@ -34,6 +34,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   Parada? _parada;
   DateTime? _paradaDia;          // null = hoje
   bool _paradaAberto = false;
+  DateTime? _paradaQuando;       // ultima busca, para nao pedir a cada poll
 
   bool get _vePainelParada => !widget.usuario.ehMecanico;
 
@@ -57,8 +58,15 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   }
 
   /// O painel é um extra: se falhar, a tela de chamados continua normal.
-  Future<void> _carregarParadas() async {
+  Future<void> _carregarParadas({bool forcar = false}) async {
     if (!_vePainelParada) return;
+    // o total do dia nao muda a cada 15s como os cartoes; pedir junto
+    // com todo poll so enchia a fila do servidor.
+    final agora = DateTime.now();
+    if (!forcar &&
+        _paradaQuando != null &&
+        agora.difference(_paradaQuando!).inSeconds < 55) return;
+    _paradaQuando = agora;
     final d = _paradaDia;
     final sufixo = d == null
         ? ''
@@ -68,7 +76,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       if (!mounted) return;
       setState(() => _parada = Parada.deJson(dados));
     } catch (_) {
-      // servidor antigo ainda sem o endpoint: segue sem o painel
+      _paradaQuando = null;   // deixa tentar de novo no proximo ciclo
     }
   }
 
@@ -174,6 +182,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     } on ErroApi catch (e) {
       if (mounted) aviso(context, e.mensagem, erro: true);
     }
+    _paradaQuando = null;   // acao mudou os chamados: refaz a conta
     await _carregar(silencioso: true);
   }
 
@@ -194,6 +203,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     } on ErroApi catch (e) {
       if (mounted) aviso(context, e.mensagem, erro: true);
     }
+    _paradaQuando = null;   // acao mudou os chamados: refaz a conta
     await _carregar(silencioso: true);
   }
 
@@ -220,6 +230,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     } on ErroApi catch (e) {
       if (mounted) aviso(context, e.mensagem, erro: true);
     }
+    _paradaQuando = null;   // acao mudou os chamados: refaz a conta
     await _carregar(silencioso: true);
   }
 
@@ -287,7 +298,8 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     );
     if (criado == true) {
       _abas.animateTo(0);
-      await _carregar(silencioso: true);
+      _paradaQuando = null;   // acao mudou os chamados: refaz a conta
+    await _carregar(silencioso: true);
     }
   }
 
@@ -354,7 +366,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                   _paradaDia = d;
                   _parada = null;
                 });
-                _carregarParadas();
+                _carregarParadas(forcar: true);
               },
             ),
           Container(
