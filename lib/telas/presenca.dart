@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../comum.dart';
+import '../seletor.dart';
 
 class TelaPresenca extends StatefulWidget {
   final Usuario usuario;
@@ -19,6 +20,24 @@ class _TelaPresencaState extends State<TelaPresenca> {
 
   bool get _podeLancar =>
       !widget.usuario.ehMecanico && !widget.usuario.soConsulta;
+
+  String? _filtroSetor;   // null = todos
+
+  /// Setor do próprio usuário, quando bate com um setor cadastrado.
+  String? get _meuSetor {
+    final meu = (widget.usuario.setor ?? '').trim();
+    if (meu.isEmpty) return null;
+    return _setores.any((s) => s['nome'].toString() == meu) ? meu : null;
+  }
+
+  /// Verde a partir de 95%, que é a meta; âmbar até 80; vermelho abaixo.
+  static Color corCobertura(int? c) => c == null
+      ? Cores.tinta2
+      : c >= 95
+          ? Cores.verdeEsc
+          : c >= 80
+              ? Cores.ambar
+              : Cores.vermelho;
 
   @override
   void initState() {
@@ -138,6 +157,20 @@ class _TelaPresencaState extends State<TelaPresenca> {
                           style: const TextStyle(color: Cores.tinta2, fontSize: 13)),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  CampoBusca(
+                    rotulo: 'Setor',
+                    dica: 'Todos os setores',
+                    opcoes: _setores
+                        .map((x) => Opcao(x['nome'].toString(), x['nome'].toString()))
+                        .toList(),
+                    escolhida: _filtroSetor == null
+                        ? null
+                        : Opcao(_filtroSetor!, _filtroSetor!),
+                    podeLimpar: true,
+                    aoEscolher: (o) =>
+                        setState(() => _filtroSetor = o?.valor as String?),
+                  ),
                   const SizedBox(height: 10),
                   if (_erro != null)
                     Padding(
@@ -151,11 +184,15 @@ class _TelaPresencaState extends State<TelaPresenca> {
                       _Indicador(valor: '$presentes', rotulo: 'Presentes'),
                       _Indicador(valor: '$faltas', rotulo: 'Faltas', alerta: faltas > 0),
                       _Indicador(
-                          valor: cobertura == null ? '—' : '$cobertura%', rotulo: 'Cobertura'),
+                          valor: cobertura == null ? '—' : '$cobertura%',
+                          rotulo: 'Cobertura',
+                          cor: corCobertura(cobertura)),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ..._setores.map((s) {
+                  ..._setores
+                      .where((s) => _filtroSetor == null || s['nome'].toString() == _filtroSetor)
+                      .map((s) {
                     final nome = s['nome'].toString();
                     final r = _registroDe(nome);
                     final f = _faltas(r);
@@ -191,7 +228,7 @@ class _TelaPresencaState extends State<TelaPresenca> {
                                 style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
-                                    color: cob < 80 ? Cores.vermelho : Cores.verdeEsc)),
+                                    color: corCobertura(cob))),
                       ),
                     );
                   }),
@@ -212,7 +249,9 @@ class _Indicador extends StatelessWidget {
   final String valor;
   final String rotulo;
   final bool alerta;
-  const _Indicador({required this.valor, required this.rotulo, this.alerta = false});
+  final Color? cor;
+  const _Indicador(
+      {required this.valor, required this.rotulo, this.alerta = false, this.cor});
 
   @override
   Widget build(BuildContext context) => Expanded(
@@ -231,7 +270,7 @@ class _Indicador extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: alerta ? Cores.vermelho : Cores.tinta)),
+                      color: cor ?? (alerta ? Cores.vermelho : Cores.tinta))),
               Text(rotulo, style: const TextStyle(fontSize: 12.5, color: Cores.tinta2)),
             ],
           ),

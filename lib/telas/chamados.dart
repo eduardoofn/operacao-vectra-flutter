@@ -18,7 +18,9 @@ class TelaChamados extends StatefulWidget {
 class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderStateMixin {
   static const _situacoes = ['ABERTO', 'ANDAMENTO', 'CONCLUIDO'];
 
-  late final TabController _abas = TabController(length: 3, vsync: this);
+  // a 4a aba (Relatório) só existe para quem acompanha os números
+  late final TabController _abas =
+      TabController(length: _vePainelParada ? 4 : 3, vsync: this);
   Timer? _timer;
   Timer? _relogio;
 
@@ -33,8 +35,13 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   // fechamento do dia: quanto tempo de máquina parada o grupo acumulou
   Parada? _parada;
   DateTime? _paradaDia;          // null = hoje
-  bool _paradaAberto = false;
   DateTime? _paradaQuando;       // ultima busca, para nao pedir a cada poll
+  List<Map<String, dynamic>> _mecanicos = [];   // buscados so quando precisa
+
+  bool _podeTrocarMec(Chamado c) =>
+      !widget.usuario.soConsulta &&
+      (c.aberto || c.emAndamento) &&
+      (widget.usuario.ehMecanico || widget.usuario.ehGestor);
 
   bool get _vePainelParada => !widget.usuario.ehMecanico;
 
@@ -42,6 +49,14 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _carregar();
+    _abas.addListener(() {
+      if (!mounted) return;
+      setState(() {});
+      // abriu o Relatório e ainda não tem dado: busca na hora
+      if (_abas.index == _situacoes.length && _parada == null) {
+        _carregarParadas(forcar: true);
+      }
+    });
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => _carregar(silencioso: true));
     // mantém os contadores de tempo andando sem bater no servidor
     _relogio = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -172,6 +187,97 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       c.emAndamento && (c.mecanicoId == widget.usuario.id || widget.usuario.ehGestor);
   bool _podeCancelar(Chamado c) => !widget.usuario.soConsulta &&
       c.aberto && (c.liderId == widget.usuario.id || widget.usuario.ehGestor);
+
+  /// Passa o chamado para outro mecânico, ou devolve para a fila.
+  /// A lista de mecânicos só é buscada quando alguém abre esta folha.
+  Future<void> _trocarMecanico(Chamado c) async {
+    if (_mecanicos.isEmpty) {
+      try {
+        final dados = await Api.get('/api/listas') as Map<String, dynamic>;
+        _mecanicos = ((dados['mecanicos'] ?? []) as List).cast<Map<String, dynamic>>();
+      } catch (_) {
+        if (mounted) aviso(context, 'Não consegui buscar os mecânicos.', erro: true);
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (_mecanicos.isEmpty) {
+      return aviso(context, 'Nenhum mecânico ativo cadastrado.', erro: true);
+    }
+
+    final escolha = await showModalBottomSheet<Object?>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 2),
+              child: Text('Mecânico do #${c.id}',
+                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+              child: Text(
+                  '${c.maquinaCodigo} ${c.maquinaDescricao}\n'
+                  'Hoje: ${c.mecanico ?? 'ninguém — está na fila'}',
+                  style: const TextStyle(color: Cores.tinta2, fontSize: 13)),
+            ),
+            const Divider(height: 1, color: Cores.linha),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final m in _mecanicos)
+                    ListTile(
+                      leading: const Icon(Icons.build_outlined, size: 20),
+                      title: Text(m['nome'].toString()),
+                      trailing: m['id'] == c.mecanicoId
+                          ? const Icon(Icons.check, color: Cores.verdeEsc)
+                          : null,
+                      onTap: () => Navigator.pop(context, m['id']),
+                    ),
+                  if (c.mecanico != null)
+                    ListTile(
+                      leading: const Icon(Icons.undo, size: 20, color: Cores.vermelho),
+                      title: const Text('Devolver para a fila',
+                          style: TextStyle(color: Cores.vermelho)),
+                      onTap: () => Navigator.pop(context, '__fila__'),
+                    ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 8, 18, 14),
+              child: Text('O tempo de parada não reinicia: continua contando desde a abertura.',
+                  style: TextStyle(color: Cores.tinta2, fontSize: 12)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (escolha == null) return;
+    if (escolha != '__fila__' && escolha == c.mecanicoId) return;
+
+    HapticFeedback.mediumImpact();
+    try {
+      await Api.post('/api/chamados/${c.id}/mecanico',
+          {'mecanico_id': escolha == '__fila__' ? null : escolha});
+      if (mounted) {
+        aviso(context,
+            escolha == '__fila__' ? 'Chamado devolvido para a fila.' : 'Mecânico trocado.');
+      }
+    } on ErroApi catch (e) {
+      if (mounted) aviso(context, e.mensagem, erro: true);
+    }
+    _paradaQuando = null;
+    await _carregar(silencioso: true);
+  }
 
   Future<void> _atender(Chamado c) async {
     HapticFeedback.mediumImpact();
@@ -355,19 +461,12 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
               ],
             ),
           ),
-          if (_vePainelParada)
+          // no Relatório o painel seria repetição do cabeçalho de lá
+          if (_vePainelParada && _abas.index < _situacoes.length)
             PainelParada(
               parada: _parada,
               ehLider: widget.usuario.ehLider,
-              aberto: _paradaAberto,
-              aoAlternar: () => setState(() => _paradaAberto = !_paradaAberto),
-              aoTrocarDia: (d) {
-                setState(() {
-                  _paradaDia = d;
-                  _parada = null;
-                });
-                _carregarParadas(forcar: true);
-              },
+              aoTocar: () => _abas.animateTo(_situacoes.length),
             ),
           Container(
             color: Colors.white,
@@ -404,16 +503,55 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                       ],
                     ),
                   ),
+                if (_vePainelParada) const Tab(child: Text('Relatório')),
               ],
             ),
           ),
           Expanded(
             child: TabBarView(
               controller: _abas,
-              children: [for (final s in _situacoes) _lista(s)],
+              children: [
+                for (final s in _situacoes) _lista(s),
+                if (_vePainelParada) _relatorio(),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Média, em minutos, de uma medida sobre os chamados do período.
+  int _mediaMin(Duration? Function(Chamado) medida) {
+    final vals = _chamados.map(medida).whereType<Duration>().toList();
+    if (vals.isEmpty) return 0;
+    return vals.map((d) => d.inMinutes).reduce((a, b) => a + b) ~/ vals.length;
+  }
+
+  /// Aba Relatório: as paradas do dia por inteiro.
+  Widget _relatorio() {
+    final p = _parada;
+    if (p == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return RefreshIndicator(
+      onRefresh: () => _carregarParadas(forcar: true),
+      child: RelatorioParadas(
+        parada: p,
+        ehLider: widget.usuario.ehLider,
+        mediaEspera: _mediaMin((c) =>
+            c.inicio == null ? null : c.inicio!.difference(c.abertura)),
+        mediaReparo: _mediaMin((c) =>
+            c.fim == null || c.inicio == null ? null : c.fim!.difference(c.inicio!)),
+        mediaTotal: _mediaMin((c) =>
+            c.fim == null ? null : c.fim!.difference(c.abertura)),
+        aoTrocarDia: (d) {
+          setState(() {
+            _paradaDia = d;
+            _parada = null;
+          });
+          _carregarParadas(forcar: true);
+        },
       ),
     );
   }
@@ -468,9 +606,11 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                 podeAtender: _podeAtender(lista[i]),
                 podeConcluir: _podeConcluir(lista[i]),
                 podeCancelar: _podeCancelar(lista[i]),
+                podeTrocarMec: _podeTrocarMec(lista[i]),
                 aoAtender: () => _atender(lista[i]),
                 aoConcluir: () => _concluir(lista[i]),
                 aoCancelar: () => _cancelar(lista[i]),
+                aoTrocarMec: () => _trocarMecanico(lista[i]),
                 mostrarLider: !widget.usuario.ehLider,
               ),
             ),
@@ -518,20 +658,24 @@ class _CartaoChamado extends StatefulWidget {
   final bool podeAtender;
   final bool podeConcluir;
   final bool podeCancelar;
+  final bool podeTrocarMec;
   final bool mostrarLider;
   final VoidCallback aoAtender;
   final VoidCallback aoConcluir;
   final VoidCallback aoCancelar;
+  final VoidCallback aoTrocarMec;
 
   const _CartaoChamado({
     required this.chamado,
     required this.podeAtender,
     required this.podeConcluir,
     required this.podeCancelar,
+    required this.podeTrocarMec,
     required this.mostrarLider,
     required this.aoAtender,
     required this.aoConcluir,
     required this.aoCancelar,
+    required this.aoTrocarMec,
   });
 
   @override
@@ -677,14 +821,23 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                 if (c.concluido && c.fim != null)
                   _linha('Fim',
                       '${dataHora(c.fim)}  (reparo ${duracao(c.fim!.difference(c.inicio ?? c.abertura))})'),
-                if (widget.podeCancelar)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: widget.aoCancelar,
-                      child: const Text('Cancelar chamado',
-                          style: TextStyle(color: Cores.vermelho)),
-                    ),
+                if (widget.podeTrocarMec || widget.podeCancelar)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (widget.podeTrocarMec)
+                        TextButton.icon(
+                          onPressed: widget.aoTrocarMec,
+                          icon: const Icon(Icons.swap_horiz, size: 18),
+                          label: const Text('Trocar mecânico'),
+                        ),
+                      if (widget.podeCancelar)
+                        TextButton(
+                          onPressed: widget.aoCancelar,
+                          child: const Text('Cancelar chamado',
+                              style: TextStyle(color: Cores.vermelho)),
+                        ),
+                    ],
                   ),
               ],
             ],
@@ -810,6 +963,9 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
     if (_defeitoId == null && _problema.text.trim().length < 3) {
       return aviso(context, 'Escolha o defeito ou descreva o problema.', erro: true);
     }
+    if (_setor == null || _setor!.isEmpty) {
+      return aviso(context, 'Escolha o setor do chamado.', erro: true);
+    }
     setState(() => _enviando = true);
     try {
       final r = await Api.post('/api/chamados', {
@@ -878,11 +1034,11 @@ class _FormNovoChamadoState extends State<FormNovoChamado> {
                     aoEscolher: (o) => setState(() => _defeitoId = o?.valor as int?),
                   ),
                   CampoBusca(
-                    rotulo: 'Setor',
-                    dica: 'Usar o setor da máquina',
+                    rotulo: 'Setor *',
+                    dica: 'Escolha o setor',
                     opcoes: _setores.map((s) => Opcao(s, s)).toList(),
                     escolhida: _setor == null ? null : Opcao(_setor!, _setor!),
-                    podeLimpar: true,
+                    podeLimpar: false,
                     ajuda: _maquinaId == null
                         ? 'Escolha a máquina para preencher o setor.'
                         : _setor == null
