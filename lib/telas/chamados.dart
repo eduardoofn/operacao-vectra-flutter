@@ -16,7 +16,7 @@ class TelaChamados extends StatefulWidget {
 }
 
 class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderStateMixin {
-  static const _situacoes = ['ABERTO', 'ANDAMENTO', 'PAUSADO', 'CONCLUIDO'];
+  static const _situacoes = ['ABERTO', 'ANDAMENTO', 'CONCLUIDO'];
 
   // a 4a aba (Relatório) só existe para quem acompanha os números
   late final TabController _abas =
@@ -142,7 +142,11 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   List<Chamado> _filtrados(String situacao) {
     final q = _busca.trim().toLowerCase();
     final lista = _chamados.where((c) {
-      if (c.status != situacao) return false;
+      // pausa não é uma fase à parte: o chamado segue em Andamento
+      final bate = situacao == 'ANDAMENTO'
+          ? (c.emAndamento || c.pausado)
+          : c.status == situacao;
+      if (!bate) return false;
       if (q.isEmpty) return true;
       final texto = [
         c.id,
@@ -266,7 +270,6 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
           {'motivo': motivo, 'observacao': obs.text.trim()});
       if (mounted) {
         aviso(context, 'Chamado em pausa. O líder foi avisado.');
-        _abas.animateTo(_situacoes.indexOf('PAUSADO'));
       }
     } on ErroApi catch (e) {
       if (mounted) aviso(context, e.mensagem, erro: true);
@@ -281,7 +284,6 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       await Api.post('/api/chamados/${c.id}/retomar');
       if (mounted) {
         aviso(context, 'Chamado retomado.');
-        _abas.animateTo(_situacoes.indexOf('ANDAMENTO'));
       }
     } on ErroApi catch (e) {
       if (mounted) aviso(context, e.mensagem, erro: true);
@@ -847,6 +849,10 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
       if (d.inMinutes > kAlertaMinutos) corTempo = Cores.vermelho;
     } else if (c.emAndamento) {
       tempo = duracao(Relogio.agora.difference(c.inicio ?? c.abertura));
+    } else if (c.pausado) {
+      // em pausa a maquina segue parada: conta desde a abertura
+      tempo = duracao(Relogio.agora.difference(c.abertura));
+      corTempo = Cores.roxo;
     } else {
       tempo = duracao((c.fim ?? c.abertura).difference(c.abertura));
     }
@@ -868,7 +874,9 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(
-                color: emCurso ? c.prio.cor : situacao.cor,
+                color: c.pausado
+                    ? Cores.roxo
+                    : (emCurso ? c.prio.cor : situacao.cor),
                 width: 5,
               ),
             ),
@@ -889,6 +897,17 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                           color: c.prio.cor, borderRadius: BorderRadius.circular(4)),
                       child: Text(c.prio.curto.toUpperCase(),
                           style: const TextStyle(
+                              color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                  if (c.pausado) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: Cores.roxo, borderRadius: BorderRadius.circular(4)),
+                      child: const Text('PAUSA',
+                          style: TextStyle(
                               color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
                     ),
                   ],
