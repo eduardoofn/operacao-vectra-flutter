@@ -9,6 +9,7 @@ class Cores {
   static const papel = Color(0xFFEEF1ED);
   static const linha = Color(0xFFD6DCD4);
   static const ambar = Color(0xFFD98E0B);
+  static const roxo = Color(0xFF8257D1);
   static const azul = Color(0xFF2D6CB0);
   static const vermelho = Color(0xFFCF3A2B);
 }
@@ -90,6 +91,8 @@ class Chamado {
   final DateTime abertura;
   final DateTime? inicio;
   final DateTime? fim;
+  final String? pausaMotivo;
+  final String? pausaObs;
 
   Chamado.deJson(Map<String, dynamic> j)
       : id = j['id'] as int,
@@ -108,12 +111,18 @@ class Chamado {
         mecanicoId = j['mecanico_id'] as int?,
         abertura = DateTime.parse(j['dt_abertura'].toString()),
         inicio = j['dt_inicio'] == null ? null : DateTime.parse(j['dt_inicio'].toString()),
+        pausaMotivo = j['pausa_motivo']?.toString(),
+        pausaObs = j['pausa_obs']?.toString(),
         fim = j['dt_fim'] == null ? null : DateTime.parse(j['dt_fim'].toString());
 
   Prioridade get prio => Prioridade.de(prioridade);
   bool get aberto => status == 'ABERTO';
   bool get emAndamento => status == 'ANDAMENTO';
+  bool get pausado => status == 'PAUSADO';
   bool get concluido => status == 'CONCLUIDO';
+
+  /// Texto do motivo da pausa, pronto para a tela.
+  String get pausaNome => MotivoPausa.nomes[pausaMotivo ?? ''] ?? 'Pausado';
 }
 
 class Balanceamento {
@@ -157,6 +166,20 @@ class Balanceamento {
 }
 
 /// Status com nome e cor, usado nas três telas de quadro.
+/// Motivos possíveis para o mecânico pausar um chamado.
+class MotivoPausa {
+  static const nomes = {
+    'PECA': 'Esperando peça',
+    'OUTRA_MAQUINA': 'Foi para outra máquina',
+    'OUTRO': 'Outro motivo',
+  };
+  static const curtos = {
+    'PECA': 'Esperando\npeça',
+    'OUTRA_MAQUINA': 'Fui para outra\nmáquina',
+    'OUTRO': 'Outro',
+  };
+}
+
 class Situacao {
   final String nome;
   final Color cor;
@@ -166,6 +189,7 @@ class Situacao {
   static const Map<String, Situacao> chamados = {
     'ABERTO': Situacao('Aberto', Cores.ambar, Color(0xFFFDF2DA)),
     'ANDAMENTO': Situacao('Em andamento', Cores.azul, Color(0xFFE3EDF8)),
+    'PAUSADO': Situacao('Em pausa', Cores.roxo, Color(0xFFEFE9FB)),
     'CONCLUIDO': Situacao('Concluído', Cores.verdeEsc, Color(0xFFE6F4E2)),
     'CANCELADO': Situacao('Cancelado', Color(0xFF8A948D), Color(0xFFECEEEC)),
   };

@@ -16,11 +16,12 @@ class TelaChamados extends StatefulWidget {
 }
 
 class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderStateMixin {
-  static const _situacoes = ['ABERTO', 'ANDAMENTO', 'CONCLUIDO'];
+  static const _situacoes = ['ABERTO', 'ANDAMENTO', 'PAUSADO', 'CONCLUIDO'];
 
   // a 4a aba (Relatório) só existe para quem acompanha os números
-  late final TabController _abas =
-      TabController(length: _vePainelParada ? 4 : 3, vsync: this);
+  // 4 situações + Relatório para quem acompanha os números
+  late final TabController _abas = TabController(
+      length: _situacoes.length + (_vePainelParada ? 1 : 0), vsync: this);
   Timer? _timer;
   Timer? _relogio;
 
@@ -31,6 +32,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   String? _erro;
   String _busca = '';
   int _dias = 7;
+  DateTimeRange? _intervalo;   // quando a pessoa escolhe datas
 
   // fechamento do dia: quanto tempo de máquina parada o grupo acumulou
   Parada? _parada;
@@ -40,7 +42,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
 
   bool _podeTrocarMec(Chamado c) =>
       !widget.usuario.soConsulta &&
-      (c.aberto || c.emAndamento) &&
+      (c.aberto || c.emAndamento || c.pausado) &&
       (widget.usuario.ehMecanico || widget.usuario.ehGestor);
 
   bool get _vePainelParada => !widget.usuario.ehMecanico;
@@ -98,7 +100,11 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   Future<void> _carregar({bool silencioso = false}) async {
     if (!silencioso && mounted) setState(() => _carregando = true);
     try {
-      final dados = await Api.get('/api/chamados?dias=$_dias') as Map<String, dynamic>;
+      final r = _intervalo;
+      final q = r == null
+          ? 'dias=$_dias'
+          : 'de=${_iso(r.start)}&ate=${_iso(r.end)}';
+      final dados = await Api.get('/api/chamados?$q') as Map<String, dynamic>;
       Relogio.sincronizar(dados['agora']?.toString());
       final lista = (dados['chamados'] as List)
           .map((e) => Chamado.deJson(e as Map<String, dynamic>))
@@ -184,12 +190,115 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   bool _podeAtender(Chamado c) => !widget.usuario.soConsulta &&
       c.aberto && (widget.usuario.ehMecanico || widget.usuario.ehGestor);
   bool _podeConcluir(Chamado c) => !widget.usuario.soConsulta &&
-      c.emAndamento && (c.mecanicoId == widget.usuario.id || widget.usuario.ehGestor);
+      (c.emAndamento || c.pausado) &&
+      (c.mecanicoId == widget.usuario.id || widget.usuario.ehGestor);
+
+  // pausa é de quem está com a mão na máquina: só o mecânico dono do chamado
+  bool _podePausar(Chamado c) =>
+      c.emAndamento && widget.usuario.ehMecanico && c.mecanicoId == widget.usuario.id;
+  bool _podeRetomar(Chamado c) =>
+      c.pausado && widget.usuario.ehMecanico && c.mecanicoId == widget.usuario.id;
   bool _podeCancelar(Chamado c) => !widget.usuario.soConsulta &&
       c.aberto && (c.liderId == widget.usuario.id || widget.usuario.ehGestor);
 
   /// Passa o chamado para outro mecânico, ou devolve para a fila.
   /// A lista de mecânicos só é buscada quando alguém abre esta folha.
+  Future<void> _pausar(Chamado c) async {
+    String motivo = 'PECA';
+    final obs = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, repinta) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              18, 16, 18, MediaQuery.of(ctx).viewInsets.bottom + 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Pausar #${c.id}',
+                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(
+                  '${c.maquinaCodigo} ${c.maquinaDescricao}\n'
+                  'A máquina continua contando como parada. A pausa só registra '
+                  'que você não está nela.',
+                  style: const TextStyle(color: Cores.tinta2, fontSize: 12.5, height: 1.35)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final e in MotivoPausa.curtos.entries)
+                    ChoiceChip(
+                      label: Text(e.value.replaceAll('\n', ' '),
+                          style: const TextStyle(fontSize: 12.5)),
+                      selected: motivo == e.key,
+                      onSelected: (_) => repinta(() => motivo = e.key),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: obs,
+                maxLength: 300,
+                decoration: const InputDecoration(
+                  labelText: 'Observação (opcional)',
+                  hintText: 'Ex.: agulha 90, pedida ao almoxarifado',
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Cores.verdeEsc,
+                      minimumSize: const Size.fromHeight(46)),
+                  child: const Text('Pausar chamado'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    obs.dispose();
+    if (ok != true) return;
+
+    HapticFeedback.mediumImpact();
+    try {
+      await Api.post('/api/chamados/${c.id}/pausar',
+          {'motivo': motivo, 'observacao': obs.text.trim()});
+      if (mounted) {
+        aviso(context, 'Chamado em pausa. O líder foi avisado.');
+        _abas.animateTo(_situacoes.indexOf('PAUSADO'));
+      }
+    } on ErroApi catch (e) {
+      if (mounted) aviso(context, e.mensagem, erro: true);
+    }
+    _paradaQuando = null;
+    await _carregar(silencioso: true);
+  }
+
+  Future<void> _retomar(Chamado c) async {
+    HapticFeedback.mediumImpact();
+    try {
+      await Api.post('/api/chamados/${c.id}/retomar');
+      if (mounted) {
+        aviso(context, 'Chamado retomado.');
+        _abas.animateTo(_situacoes.indexOf('ANDAMENTO'));
+      }
+    } on ErroApi catch (e) {
+      if (mounted) aviso(context, e.mensagem, erro: true);
+    }
+    _paradaQuando = null;
+    await _carregar(silencioso: true);
+  }
+
   Future<void> _trocarMecanico(Chamado c) async {
     if (_mecanicos.isEmpty) {
       try {
@@ -445,17 +554,28 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                 const SizedBox(width: 8),
                 PopupMenuButton<int>(
                   tooltip: 'Período dos concluídos',
-                  icon: const Icon(Icons.filter_list),
-                  initialValue: _dias,
-                  onSelected: (v) {
-                    setState(() => _dias = v);
+                  icon: Icon(Icons.filter_list,
+                      color: _intervalo == null ? null : Cores.verdeEsc),
+                  initialValue: _intervalo == null ? _dias : -1,
+                  onSelected: (v) async {
+                    if (v == -1) return _escolherIntervalo();
+                    setState(() {
+                      _dias = v;
+                      _intervalo = null;
+                    });
                     _carregar();
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 0, child: Text('Concluídos hoje')),
-                    PopupMenuItem(value: 7, child: Text('Últimos 7 dias')),
-                    PopupMenuItem(value: 30, child: Text('Últimos 30 dias')),
-                    PopupMenuItem(value: 90, child: Text('Últimos 90 dias')),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 0, child: Text('Concluídos hoje')),
+                    const PopupMenuItem(value: 7, child: Text('Últimos 7 dias')),
+                    const PopupMenuItem(value: 30, child: Text('Últimos 30 dias')),
+                    const PopupMenuItem(value: 90, child: Text('Últimos 90 dias')),
+                    PopupMenuItem(
+                      value: -1,
+                      child: Text(_intervalo == null
+                          ? 'Escolher datas…'
+                          : '${_br(_intervalo!.start)} a ${_br(_intervalo!.end)}'),
+                    ),
                   ],
                 ),
               ],
@@ -472,6 +592,8 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
             color: Colors.white,
             child: TabBar(
               controller: _abas,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               labelColor: Cores.tinta,
               indicatorColor: Cores.verdeEsc,
               indicatorWeight: 3,
@@ -521,12 +643,44 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
     );
   }
 
+  static String _iso(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _br(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+
+  Future<void> _escolherIntervalo() async {
+    final hoje = DateTime.now();
+    final escolhido = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(hoje.year - 2),
+      lastDate: hoje,
+      initialDateRange: _intervalo ??
+          DateTimeRange(start: hoje.subtract(const Duration(days: 6)), end: hoje),
+      helpText: 'Período dos chamados',
+      saveText: 'Aplicar',
+    );
+    if (escolhido == null) return;
+    setState(() => _intervalo = escolhido);
+    _carregar();
+  }
+
+  static Duration? _espera(Chamado c) =>
+      c.inicio == null ? null : c.inicio!.difference(c.abertura);
+  static Duration? _reparo(Chamado c) =>
+      c.fim == null || c.inicio == null ? null : c.fim!.difference(c.inicio!);
+
   /// Média, em minutos, de uma medida sobre os chamados do período.
   int _mediaMin(Duration? Function(Chamado) medida) {
     final vals = _chamados.map(medida).whereType<Duration>().toList();
     if (vals.isEmpty) return 0;
     return vals.map((d) => d.inMinutes).reduce((a, b) => a + b) ~/ vals.length;
   }
+
+  /// Soma, em minutos, da mesma medida.
+  int _somaMin(Duration? Function(Chamado) medida) => _chamados
+      .map(medida)
+      .whereType<Duration>()
+      .fold<int>(0, (a, d) => a + d.inMinutes);
 
   /// Aba Relatório: as paradas do dia por inteiro.
   Widget _relatorio() {
@@ -539,12 +693,10 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       child: RelatorioParadas(
         parada: p,
         ehLider: widget.usuario.ehLider,
-        mediaEspera: _mediaMin((c) =>
-            c.inicio == null ? null : c.inicio!.difference(c.abertura)),
-        mediaReparo: _mediaMin((c) =>
-            c.fim == null || c.inicio == null ? null : c.fim!.difference(c.inicio!)),
-        mediaTotal: _mediaMin((c) =>
-            c.fim == null ? null : c.fim!.difference(c.abertura)),
+        mediaEspera: _mediaMin(_espera),
+        mediaReparo: _mediaMin(_reparo),
+        totalEspera: _somaMin(_espera),
+        totalReparo: _somaMin(_reparo),
         aoTrocarDia: (d) {
           setState(() {
             _paradaDia = d;
@@ -607,10 +759,14 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                 podeConcluir: _podeConcluir(lista[i]),
                 podeCancelar: _podeCancelar(lista[i]),
                 podeTrocarMec: _podeTrocarMec(lista[i]),
+                podePausar: _podePausar(lista[i]),
+                podeRetomar: _podeRetomar(lista[i]),
                 aoAtender: () => _atender(lista[i]),
                 aoConcluir: () => _concluir(lista[i]),
                 aoCancelar: () => _cancelar(lista[i]),
                 aoTrocarMec: () => _trocarMecanico(lista[i]),
+                aoPausar: () => _pausar(lista[i]),
+                aoRetomar: () => _retomar(lista[i]),
                 mostrarLider: !widget.usuario.ehLider,
               ),
             ),
@@ -659,11 +815,15 @@ class _CartaoChamado extends StatefulWidget {
   final bool podeConcluir;
   final bool podeCancelar;
   final bool podeTrocarMec;
+  final bool podePausar;
+  final bool podeRetomar;
   final bool mostrarLider;
   final VoidCallback aoAtender;
   final VoidCallback aoConcluir;
   final VoidCallback aoCancelar;
   final VoidCallback aoTrocarMec;
+  final VoidCallback aoPausar;
+  final VoidCallback aoRetomar;
 
   const _CartaoChamado({
     required this.chamado,
@@ -671,11 +831,15 @@ class _CartaoChamado extends StatefulWidget {
     required this.podeConcluir,
     required this.podeCancelar,
     required this.podeTrocarMec,
+    required this.podePausar,
+    required this.podeRetomar,
     required this.mostrarLider,
     required this.aoAtender,
     required this.aoConcluir,
     required this.aoCancelar,
     required this.aoTrocarMec,
+    required this.aoPausar,
+    required this.aoRetomar,
   });
 
   @override
@@ -783,6 +947,8 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                   ),
                   if (widget.podeAtender)
                     _BotaoMini(texto: 'Atender', cor: Cores.azul, aoTocar: widget.aoAtender)
+                  else if (widget.podeRetomar)
+                    _BotaoMini(texto: 'Retomar', cor: Cores.azul, aoTocar: widget.aoRetomar)
                   else if (widget.podeConcluir)
                     _BotaoMini(texto: 'Concluir', cor: Cores.verdeEsc, aoTocar: widget.aoConcluir)
                   else if (c.mecanico != null && !c.aberto)
@@ -808,6 +974,32 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                     child: Text('Feito: ${c.solucao}',
                         style: const TextStyle(color: Cores.verdeEsc, fontSize: 13.5)),
                   ),
+                if (c.pausado)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFE9FB),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.pause_circle_outline, size: 18, color: Cores.roxo),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                              c.pausaNome +
+                                  (c.pausaObs == null || c.pausaObs!.isEmpty
+                                      ? ''
+                                      : ' — ${c.pausaObs}'),
+                              style: const TextStyle(
+                                  color: Cores.roxo,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ),
                 _linha('Setor', c.setor ?? '—'),
                 _linha('Defeito', c.defeito ?? '—'),
                 _linha('Prioridade', c.prio.nome),
@@ -821,10 +1013,16 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                 if (c.concluido && c.fim != null)
                   _linha('Fim',
                       '${dataHora(c.fim)}  (reparo ${duracao(c.fim!.difference(c.inicio ?? c.abertura))})'),
-                if (widget.podeTrocarMec || widget.podeCancelar)
+                if (widget.podePausar || widget.podeTrocarMec || widget.podeCancelar)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      if (widget.podePausar)
+                        TextButton.icon(
+                          onPressed: widget.aoPausar,
+                          icon: const Icon(Icons.pause, size: 18),
+                          label: const Text('Pausar'),
+                        ),
                       if (widget.podeTrocarMec)
                         TextButton.icon(
                           onPressed: widget.aoTrocarMec,

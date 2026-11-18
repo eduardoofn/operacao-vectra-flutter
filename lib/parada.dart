@@ -6,7 +6,7 @@ import 'comum.dart';
 /// uma parada que virou a noite não joga tudo em um dia só.
 class Parada {
   final String data;
-  final int minutos, minEspera, minReparo, paradas, emAndamento;
+  final int minutos, minEspera, minReparo, minPausa, paradas, emAndamento;
   final List<int> expediente;        // [abre, fecha] em horas
   final List<ParadaMaquina> porMaquina;
   final List<ParadaItem> itens;
@@ -16,6 +16,7 @@ class Parada {
         minutos = _i(j['minutos']),
         minEspera = _i(j['min_espera']),
         minReparo = _i(j['min_reparo']),
+        minPausa = _i(j['min_pausa']),
         paradas = _i(j['paradas']),
         emAndamento = _i(j['em_andamento']),
         expediente =
@@ -30,18 +31,22 @@ class Parada {
   static int _i(Object? v) => v is int ? v : int.tryParse('${v ?? 0}') ?? 0;
 
   int get pctEspera => minutos == 0 ? 0 : (minEspera * 100 / minutos).round();
+  int get pctPausa => minutos == 0 ? 0 : (minPausa * 100 / minutos).round();
 
 }
 
 class ParadaMaquina {
   final String codigo, descricao, setor;
-  final int minutos, paradas;
+  final int minutos, minEspera, minReparo, minPausa, paradas;
   final bool emAndamento;
   ParadaMaquina.deJson(Map<String, dynamic> j)
       : codigo = (j['codigo'] ?? '').toString(),
         descricao = (j['descricao'] ?? '').toString(),
         setor = (j['setor'] ?? '').toString(),
         minutos = Parada._i(j['minutos']),
+        minEspera = Parada._i(j['min_espera']),
+        minReparo = Parada._i(j['min_reparo']),
+        minPausa = Parada._i(j['min_pausa']),
         paradas = Parada._i(j['paradas']),
         emAndamento = j['em_andamento'] == true;
 }
@@ -135,8 +140,8 @@ class RelatorioParadas extends StatelessWidget {
   final Parada parada;
   final bool ehLider;
   final ValueChanged<DateTime> aoTrocarDia;
-  // médias do período filtrado nos chamados, em minutos
-  final int mediaEspera, mediaReparo, mediaTotal;
+  // tempos do período filtrado nos chamados, em minutos
+  final int mediaEspera, mediaReparo, totalEspera, totalReparo;
 
   const RelatorioParadas({
     super.key,
@@ -145,7 +150,8 @@ class RelatorioParadas extends StatelessWidget {
     required this.aoTrocarDia,
     this.mediaEspera = 0,
     this.mediaReparo = 0,
-    this.mediaTotal = 0,
+    this.totalEspera = 0,
+    this.totalReparo = 0,
   });
 
   @override
@@ -183,12 +189,13 @@ class RelatorioParadas extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        if (mediaTotal > 0) ...[
+        if (totalEspera > 0 || totalReparo > 0) ...[
           _titulo('Tempo de atendimento no período'),
           Wrap(spacing: 8, runSpacing: 8, children: [
             _cartao(horas(mediaEspera), 'Espera média'),
             _cartao(horas(mediaReparo), 'Reparo médio'),
-            _cartao(horas(mediaTotal), 'Atendimento total'),
+            _cartao(horas(totalEspera), 'Espera total'),
+            _cartao(horas(totalReparo), 'Reparo total'),
           ]),
           const SizedBox(height: 16),
         ],
@@ -210,17 +217,14 @@ class RelatorioParadas extends StatelessWidget {
                   alerta: p.emAndamento > 0),
               _cartao(horas(p.minEspera), 'Esperando'),
               _cartao(horas(p.minReparo), 'Em reparo'),
+              if (p.minPausa > 0) _cartao(horas(p.minPausa), 'Em pausa'),
             ],
           ),
           const SizedBox(height: 14),
           _barra(p),
           const SizedBox(height: 16),
           _titulo('Por máquina'),
-          for (final m in p.porMaquina)
-            _linha(horas(m.minutos), m.codigo,
-                '${m.descricao}${m.setor.isEmpty ? '' : ' · ${m.setor}'}'
-                ' · ${m.paradas} parada${m.paradas > 1 ? 's' : ''}',
-                m.emAndamento ? 'parada agora' : null),
+          _tabelaMaquinas(p),
           const SizedBox(height: 14),
           _titulo('Chamado por chamado'),
           for (final i in p.itens)
@@ -232,6 +236,88 @@ class RelatorioParadas extends StatelessWidget {
       ],
     );
   }
+
+  /// Tabela igual à da Lista: uma linha por máquina, colunas alinhadas.
+  /// Rola na horizontal porque no celular não cabe tudo de uma vez.
+  Widget _tabelaMaquinas(Parada p) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Cores.linha),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowHeight: 38,
+            dataRowMinHeight: 38,
+            dataRowMaxHeight: 52,
+            horizontalMargin: 12,
+            columnSpacing: 18,
+            headingTextStyle: const TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: Cores.tinta2),
+            dataTextStyle: const TextStyle(fontSize: 13, color: Cores.tinta),
+            columns: const [
+              DataColumn(label: Text('Máquina')),
+              DataColumn(label: Text('Setor')),
+              DataColumn(label: Text('Paradas'), numeric: true),
+              DataColumn(label: Text('Espera'), numeric: true),
+              DataColumn(label: Text('Reparo'), numeric: true),
+              DataColumn(label: Text('Pausa'), numeric: true),
+              DataColumn(label: Text('Total'), numeric: true),
+            ],
+            rows: [
+              for (final m in p.porMaquina)
+                DataRow(cells: [
+                  DataCell(Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(children: [
+                        Text(m.codigo,
+                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                        if (m.emAndamento) ...[
+                          const SizedBox(width: 6),
+                          selo('parada agora'),
+                        ],
+                      ]),
+                      if (m.descricao.isNotEmpty)
+                        Text(m.descricao,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, color: Cores.tinta2)),
+                    ],
+                  )),
+                  DataCell(Text(m.setor.isEmpty ? '—' : m.setor)),
+                  DataCell(Text('${m.paradas}')),
+                  DataCell(Text(horas(m.minEspera))),
+                  DataCell(Text(horas(m.minReparo))),
+                  DataCell(Text(m.minPausa > 0 ? horas(m.minPausa) : '—')),
+                  DataCell(Text(horas(m.minutos),
+                      style: const TextStyle(fontWeight: FontWeight.w800))),
+                ]),
+              DataRow(
+                color: WidgetStateProperty.all(const Color(0xFFF4F6F4)),
+                cells: [
+                  const DataCell(Text('Total',
+                      style: TextStyle(fontWeight: FontWeight.w700))),
+                  const DataCell(Text('')),
+                  DataCell(Text('${p.paradas}',
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+                  DataCell(Text(horas(p.minEspera),
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+                  DataCell(Text(horas(p.minReparo),
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+                  DataCell(Text(p.minPausa > 0 ? horas(p.minPausa) : '—',
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+                  DataCell(Text(horas(p.minutos),
+                      style: const TextStyle(fontWeight: FontWeight.w800))),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _cartao(String valor, String rotulo, {bool alerta = false}) => Container(
         width: 108,
@@ -265,10 +351,13 @@ class RelatorioParadas extends StatelessWidget {
                 builder: (_, caixa) {
                   final largura = caixa.maxWidth;
                   final espera = largura * p.pctEspera / 100;
+                  final pausa = largura * p.pctPausa / 100;
                   return Row(children: [
                     SizedBox(width: espera, child: const ColoredBox(color: Cores.ambar)),
                     SizedBox(
-                        width: largura - espera, child: const ColoredBox(color: Cores.verde)),
+                        width: (largura - espera - pausa).clamp(0, largura),
+                        child: const ColoredBox(color: Cores.verde)),
+                    SizedBox(width: pausa, child: const ColoredBox(color: Cores.roxo)),
                   ]);
                 },
               ),
@@ -280,8 +369,13 @@ class RelatorioParadas extends StatelessWidget {
             Text(' esperando mecânico ${p.pctEspera}%   ',
                 style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
             _ponto(Cores.verde),
-            Text(' em reparo ${100 - p.pctEspera}%',
+            Text(' em reparo ${100 - p.pctEspera - p.pctPausa}%',
                 style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+            if (p.pctPausa > 0) ...[
+              _ponto(Cores.roxo),
+              Text(' pausa ${p.pctPausa}%',
+                  style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+            ],
           ]),
         ],
       );
