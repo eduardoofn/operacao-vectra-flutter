@@ -190,17 +190,7 @@ class RelatorioParadas extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (totalEspera > 0 || totalReparo > 0) ...[
-          _titulo('Tempo de atendimento no período'),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            _cartao(horas(mediaEspera), 'Espera média'),
-            _cartao(horas(mediaReparo), 'Reparo médio'),
-            _cartao(horas(totalEspera), 'Espera total'),
-            _cartao(horas(totalReparo), 'Reparo total'),
-          ]),
-          const SizedBox(height: 16),
-        ],
+        const SizedBox(height: 14),
         if (zerado)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
@@ -209,22 +199,13 @@ class RelatorioParadas extends StatelessWidget {
                 style: TextStyle(color: Cores.tinta2, fontSize: 14)),
           )
         else ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _cartao('${p.paradas}', 'Paradas'),
-              _cartao('${p.porMaquina.length}', 'Máquinas'),
-              _cartao('${p.emAndamento}', 'Paradas agora',
-                  alerta: p.emAndamento > 0),
-              _cartao(horas(p.minEspera), 'Esperando'),
-              _cartao(horas(p.minReparo), 'Em reparo'),
-              if (p.minPausa > 0) _cartao(horas(p.minPausa), 'Em pausa'),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _barra(p),
+          _painelTotais(p),
           const SizedBox(height: 16),
+          if (totalEspera > 0 || totalReparo > 0) ...[
+            _titulo('Tempo de atendimento no período'),
+            _painelMedias(),
+            const SizedBox(height: 16),
+          ],
           _titulo('Por máquina'),
           _tabelaMaquinas(p),
           const SizedBox(height: 14),
@@ -391,65 +372,154 @@ class RelatorioParadas extends StatelessWidget {
         ),
       );
 
-  Widget _cartao(String valor, String rotulo, {bool alerta = false}) => Container(
-        width: 108,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+  /// Um painel só, com os números do dia separados por linha.
+  /// Antes eram seis cartõezinhos soltos; junto fica mais fácil de ler.
+  Widget _painelTotais(Parada p) {
+    final pctReparo = 100 - p.pctEspera - p.pctPausa;
+    return _caixa(
+      Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: Row(
+              children: [
+                _numero('${p.paradas}', 'paradas'),
+                _divisor(),
+                _numero('${p.porMaquina.length}', 'máquinas'),
+                _divisor(),
+                _numero('${p.emAndamento}', 'paradas agora',
+                    cor: p.emAndamento > 0 ? Cores.vermelho : null),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Cores.linha),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            child: _barra(p),
+          ),
+          _faixa(Cores.ambar, 'Esperando mecânico', horas(p.minEspera), p.pctEspera),
+          _faixa(Cores.verde, 'Em reparo', horas(p.minReparo), pctReparo),
+          if (p.minPausa > 0)
+            _faixa(Cores.roxo, 'Em pausa', horas(p.minPausa), p.pctPausa),
+          const Divider(height: 1, color: Cores.linha),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 9, 14, 11),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Total parada',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                ),
+                Text(horas(p.minutos),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800, color: Cores.vermelho)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Médias e totais do período filtrado, no mesmo formato.
+  Widget _painelMedias() => _caixa(
+        Column(
+          children: [
+            _par('Espera média', horas(mediaEspera), 'Reparo médio', horas(mediaReparo)),
+            const Divider(height: 1, color: Cores.linha),
+            _par('Espera total', horas(totalEspera), 'Reparo total', horas(totalReparo),
+                forte: true),
+          ],
+        ),
+      );
+
+  Widget _caixa(Widget filho) => Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Cores.linha),
         ),
+        clipBehavior: Clip.antiAlias,
+        child: filho,
+      );
+
+  Widget _numero(String valor, String rotulo, {Color? cor}) => Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(valor,
                 style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: alerta ? Cores.vermelho : Cores.tinta)),
-            Text(rotulo, style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+                    fontSize: 22, fontWeight: FontWeight.w800, color: cor ?? Cores.tinta)),
+            Text(rotulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
           ],
         ),
       );
 
-  Widget _barra(Parada p) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              height: 7,
-              child: LayoutBuilder(
-                builder: (_, caixa) {
-                  final largura = caixa.maxWidth;
-                  final espera = largura * p.pctEspera / 100;
-                  final pausa = largura * p.pctPausa / 100;
-                  return Row(children: [
-                    SizedBox(width: espera, child: const ColoredBox(color: Cores.ambar)),
-                    SizedBox(
-                        width: (largura - espera - pausa).clamp(0, largura),
-                        child: const ColoredBox(color: Cores.verde)),
-                    SizedBox(width: pausa, child: const ColoredBox(color: Cores.roxo)),
-                  ]);
-                },
-              ),
+  Widget _divisor() => Container(
+      width: 1, height: 34, color: Cores.linha, margin: const EdgeInsets.only(right: 12));
+
+  Widget _faixa(Color cor, String rotulo, String tempo, int pct) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
+        child: Row(
+          children: [
+            _ponto(cor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(rotulo, style: const TextStyle(fontSize: 13.5)),
             ),
-          ),
-          const SizedBox(height: 5),
-          Row(children: [
-            _ponto(Cores.ambar),
-            Text(' esperando mecânico ${p.pctEspera}%   ',
-                style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
-            _ponto(Cores.verde),
-            Text(' em reparo ${100 - p.pctEspera - p.pctPausa}%',
-                style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
-            if (p.pctPausa > 0) ...[
-              _ponto(Cores.roxo),
-              Text(' pausa ${p.pctPausa}%',
-                  style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+            Text('$pct%',
+                style: const TextStyle(fontSize: 12, color: Cores.tinta2)),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 62,
+              child: Text(tempo,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+
+  Widget _par(String r1, String v1, String r2, String v2, {bool forte = false}) {
+    final estilo = TextStyle(
+        fontSize: forte ? 16 : 15, fontWeight: forte ? FontWeight.w800 : FontWeight.w700);
+    Widget lado(String r, String v) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(r, style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+              Text(v, style: estilo),
             ],
-          ]),
-        ],
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+      child: Row(children: [lado(r1, v1), _divisor(), lado(r2, v2)]),
+    );
+  }
+
+  Widget _barra(Parada p) => ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: SizedBox(
+          height: 7,
+          child: LayoutBuilder(
+            builder: (_, caixa) {
+              final largura = caixa.maxWidth;
+              final espera = largura * p.pctEspera / 100;
+              final pausa = largura * p.pctPausa / 100;
+              return Row(children: [
+                SizedBox(width: espera, child: const ColoredBox(color: Cores.ambar)),
+                SizedBox(
+                    width: (largura - espera - pausa).clamp(0, largura),
+                    child: const ColoredBox(color: Cores.verde)),
+                SizedBox(width: pausa, child: const ColoredBox(color: Cores.roxo)),
+              ]);
+            },
+          ),
+        ),
       );
 
   Widget _ponto(Color c) => Container(
@@ -462,40 +532,6 @@ class RelatorioParadas extends StatelessWidget {
         child: Text(t.toUpperCase(),
             style: const TextStyle(
                 fontSize: 11, fontWeight: FontWeight.w800, color: Cores.tinta2, letterSpacing: .5)),
-      );
-
-  Widget _linha(String tempo, String titulo, String detalhe, String? marca) => Container(
-        margin: const EdgeInsets.only(bottom: 1),
-        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Cores.linha),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 58,
-              child: Text(tempo,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(titulo,
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                  Text(detalhe,
-                      style: const TextStyle(fontSize: 11.5, color: Cores.tinta2, height: 1.3)),
-                ],
-              ),
-            ),
-            if (marca != null) ...[const SizedBox(width: 6), selo(marca)],
-          ],
-        ),
       );
 
   Future<void> _escolherDia(BuildContext context, String atual) async {
@@ -512,6 +548,71 @@ class RelatorioParadas extends StatelessWidget {
       helpText: 'Dia do fechamento',
     );
     if (escolhido != null) aoTrocarDia(escolhido);
+  }
+}
+
+/// Tela do Relatório, aberta pelo painel do topo dos chamados.
+/// Guarda a parada que está mostrando, para a troca de dia funcionar
+/// sem precisar voltar para a lista.
+class TelaRelatorio extends StatefulWidget {
+  final Parada? parada;
+  final bool ehLider;
+  final int mediaEspera, mediaReparo, totalEspera, totalReparo;
+  final Future<Parada?> Function(DateTime) aoPedirDia;
+
+  const TelaRelatorio({
+    super.key,
+    required this.parada,
+    required this.ehLider,
+    required this.aoPedirDia,
+    this.mediaEspera = 0,
+    this.mediaReparo = 0,
+    this.totalEspera = 0,
+    this.totalReparo = 0,
+  });
+
+  @override
+  State<TelaRelatorio> createState() => _TelaRelatorioState();
+}
+
+class _TelaRelatorioState extends State<TelaRelatorio> {
+  late Parada? _p = widget.parada;
+  bool _carregando = false;
+
+  Future<void> _trocarDia(DateTime d) async {
+    setState(() => _carregando = true);
+    final nova = await widget.aoPedirDia(d);
+    if (!mounted) return;
+    setState(() {
+      _p = nova;
+      _carregando = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    return Scaffold(
+      backgroundColor: Cores.papel,
+      appBar: AppBar(
+        title: const Text('Relatório de paradas'),
+        backgroundColor: Colors.white,
+        foregroundColor: Cores.tinta,
+        elevation: 0,
+        shape: const Border(bottom: BorderSide(color: Cores.linha)),
+      ),
+      body: _carregando || p == null
+          ? const Center(child: CircularProgressIndicator())
+          : RelatorioParadas(
+              parada: p,
+              ehLider: widget.ehLider,
+              mediaEspera: widget.mediaEspera,
+              mediaReparo: widget.mediaReparo,
+              totalEspera: widget.totalEspera,
+              totalReparo: widget.totalReparo,
+              aoTrocarDia: _trocarDia,
+            ),
+    );
   }
 }
 

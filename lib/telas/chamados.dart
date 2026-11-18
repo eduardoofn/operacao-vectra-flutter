@@ -19,9 +19,8 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   static const _situacoes = ['ABERTO', 'ANDAMENTO', 'PAUSADO', 'CONCLUIDO'];
 
   // a 4a aba (Relatório) só existe para quem acompanha os números
-  // 4 situações + Relatório para quem acompanha os números
-  late final TabController _abas = TabController(
-      length: _situacoes.length + (_vePainelParada ? 1 : 0), vsync: this);
+  late final TabController _abas =
+      TabController(length: _situacoes.length, vsync: this);
   Timer? _timer;
   Timer? _relogio;
 
@@ -51,14 +50,6 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _carregar();
-    _abas.addListener(() {
-      if (!mounted) return;
-      setState(() {});
-      // abriu o Relatório e ainda não tem dado: busca na hora
-      if (_abas.index == _situacoes.length && _parada == null) {
-        _carregarParadas(forcar: true);
-      }
-    });
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => _carregar(silencioso: true));
     // mantém os contadores de tempo andando sem bater no servidor
     _relogio = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -581,19 +572,16 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
               ],
             ),
           ),
-          // no Relatório o painel seria repetição do cabeçalho de lá
-          if (_vePainelParada && _abas.index < _situacoes.length)
+          if (_vePainelParada)
             PainelParada(
               parada: _parada,
               ehLider: widget.usuario.ehLider,
-              aoTocar: () => _abas.animateTo(_situacoes.length),
+              aoTocar: _abrirRelatorio,
             ),
           Container(
             color: Colors.white,
             child: TabBar(
               controller: _abas,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
               labelColor: Cores.tinta,
               indicatorColor: Cores.verdeEsc,
               indicatorWeight: 3,
@@ -625,17 +613,13 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
                       ],
                     ),
                   ),
-                if (_vePainelParada) const Tab(child: Text('Relatório')),
               ],
             ),
           ),
           Expanded(
             child: TabBarView(
               controller: _abas,
-              children: [
-                for (final s in _situacoes) _lista(s),
-                if (_vePainelParada) _relatorio(),
-              ],
+              children: [for (final s in _situacoes) _lista(s)],
             ),
           ),
         ],
@@ -682,30 +666,30 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
       .whereType<Duration>()
       .fold<int>(0, (a, d) => a + d.inMinutes);
 
-  /// Aba Relatório: as paradas do dia por inteiro.
-  Widget _relatorio() {
-    final p = _parada;
-    if (p == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return RefreshIndicator(
-      onRefresh: () => _carregarParadas(forcar: true),
-      child: RelatorioParadas(
-        parada: p,
-        ehLider: widget.usuario.ehLider,
-        mediaEspera: _mediaMin(_espera),
-        mediaReparo: _mediaMin(_reparo),
-        totalEspera: _somaMin(_espera),
-        totalReparo: _somaMin(_reparo),
-        aoTrocarDia: (d) {
-          setState(() {
+  /// Relatório abre como tela própria, a partir do painel do topo.
+  Future<void> _abrirRelatorio() async {
+    if (_parada == null) await _carregarParadas(forcar: true);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TelaRelatorio(
+          parada: _parada,
+          ehLider: widget.usuario.ehLider,
+          mediaEspera: _mediaMin(_espera),
+          mediaReparo: _mediaMin(_reparo),
+          totalEspera: _somaMin(_espera),
+          totalReparo: _somaMin(_reparo),
+          aoPedirDia: (d) async {
             _paradaDia = d;
             _parada = null;
-          });
-          _carregarParadas(forcar: true);
-        },
+            await _carregarParadas(forcar: true);
+            return _parada;
+          },
+        ),
       ),
     );
+    if (mounted) setState(() {});
   }
 
   Widget _lista(String situacao) {
@@ -927,6 +911,8 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                   Text(tempo,
                       style: TextStyle(
                           color: corTempo, fontWeight: FontWeight.w700, fontSize: 15.5)),
+                  Icon(_aberto ? Icons.expand_less : Icons.expand_more,
+                      size: 20, color: Cores.tinta2),
                 ],
               ),
               const SizedBox(height: 3),
@@ -957,6 +943,18 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                             color: Cores.azul, fontWeight: FontWeight.w600, fontSize: 12.5)),
                 ],
               ),
+              if (!_aberto)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('Ver ficha',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Cores.azul)),
+                  ),
+                ),
               if (_aberto) ...[
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
