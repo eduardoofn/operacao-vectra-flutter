@@ -42,7 +42,7 @@ class _TelaChamadosState extends State<TelaChamados> with SingleTickerProviderSt
 
   bool _podeTrocarMec(Chamado c) =>
       !widget.usuario.soConsulta &&
-      (c.aberto || c.emAndamento || c.pausado) &&
+      (c.emAndamento || c.pausado) &&
       (widget.usuario.ehMecanico || widget.usuario.ehGestor);
 
   bool get _vePainelParada => !widget.usuario.ehMecanico;
@@ -1005,7 +1005,7 @@ class _CartaoChamadoState extends State<_CartaoChamado> {
                 _linha('Prioridade', c.prio.nome),
                 _linha('Funcionário', c.funcionario ?? '—'),
                 if (widget.mostrarLider) _linha('Líder', c.lider),
-                _linha('Mecânico', c.mecanico ?? '—'),
+                if (!c.aberto) _linha('Mecânico', c.mecanico ?? '—'),
                 _linha('Abertura', dataHora(c.abertura)),
                 if (c.inicio != null)
                   _linha('Início',

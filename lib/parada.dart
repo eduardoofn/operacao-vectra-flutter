@@ -52,14 +52,16 @@ class ParadaMaquina {
 }
 
 class ParadaItem {
-  final int id, minutos, minEspera, minReparo;
-  final String codigo, defeito, mecanico;
+  final int id, minutos, minEspera, minReparo, minPausa;
+  final String codigo, defeito, mecanico, setor;
   final bool emAndamento;
   ParadaItem.deJson(Map<String, dynamic> j)
       : id = Parada._i(j['id']),
         minutos = Parada._i(j['minutos']),
         minEspera = Parada._i(j['min_espera']),
         minReparo = Parada._i(j['min_reparo']),
+        minPausa = Parada._i(j['min_pausa']),
+        setor = (j['setor'] ?? '').toString(),
         codigo = (j['codigo'] ?? '').toString(),
         defeito = (j['defeito'] ?? j['problema'] ?? '').toString(),
         mecanico = (j['mecanico'] ?? '').toString(),
@@ -227,19 +229,16 @@ class RelatorioParadas extends StatelessWidget {
           _tabelaMaquinas(p),
           const SizedBox(height: 14),
           _titulo('Chamado por chamado'),
-          for (final i in p.itens)
-            _linha(horas(i.minutos), '#${i.id} ${i.codigo}',
-                '${i.defeito} · espera ${horas(i.minEspera)} · reparo ${horas(i.minReparo)}'
-                '${i.mecanico.isEmpty ? '' : ' · ${i.mecanico}'}',
-                i.emAndamento ? 'em aberto' : null),
+          _tabelaChamados(p),
         ],
       ],
     );
   }
 
-  /// Tabela igual à da Lista: uma linha por máquina, colunas alinhadas.
-  /// Rola na horizontal porque no celular não cabe tudo de uma vez.
-  Widget _tabelaMaquinas(Parada p) => Container(
+  /// Moldura das tabelas: cartão branco que rola na horizontal,
+  /// porque no celular não cabe tudo de uma vez.
+  Widget _moldura(Widget tabela) => Container(
+        margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
@@ -248,7 +247,13 @@ class RelatorioParadas extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: DataTable(
+          child: tabela,
+        ),
+      );
+
+  /// Tabela igual à da Lista: uma linha por máquina, colunas alinhadas.
+  Widget _tabelaMaquinas(Parada p) => _moldura(
+        DataTable(
             headingRowHeight: 38,
             dataRowMinHeight: 38,
             dataRowMaxHeight: 52,
@@ -316,6 +321,73 @@ class RelatorioParadas extends StatelessWidget {
               ),
             ],
           ),
+      );
+
+  /// Mesma tabela da seção de cima, uma linha por chamado.
+  Widget _tabelaChamados(Parada p) => _moldura(
+        DataTable(
+          headingRowHeight: 38,
+          dataRowMinHeight: 38,
+          dataRowMaxHeight: 52,
+          horizontalMargin: 12,
+          columnSpacing: 18,
+          headingTextStyle: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w700, color: Cores.tinta2),
+          dataTextStyle: const TextStyle(fontSize: 13, color: Cores.tinta),
+          columns: const [
+            DataColumn(label: Text('Nº')),
+            DataColumn(label: Text('Máquina')),
+            DataColumn(label: Text('Defeito')),
+            DataColumn(label: Text('Mecânico')),
+            DataColumn(label: Text('Espera'), numeric: true),
+            DataColumn(label: Text('Reparo'), numeric: true),
+            DataColumn(label: Text('Pausa'), numeric: true),
+            DataColumn(label: Text('Total'), numeric: true),
+          ],
+          rows: [
+            for (final i in p.itens)
+              DataRow(cells: [
+                DataCell(Row(children: [
+                  Text('#${i.id}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  if (i.emAndamento) ...[const SizedBox(width: 6), selo('em aberto')],
+                ])),
+                DataCell(Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(i.codigo, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (i.setor.isNotEmpty)
+                      Text(i.setor,
+                          style: const TextStyle(fontSize: 11, color: Cores.tinta2)),
+                  ],
+                )),
+                DataCell(Text(i.defeito.isEmpty ? '—' : i.defeito)),
+                DataCell(Text(i.mecanico.isEmpty ? '—' : i.mecanico)),
+                DataCell(Text(horas(i.minEspera))),
+                DataCell(Text(horas(i.minReparo))),
+                DataCell(Text(i.minPausa > 0 ? horas(i.minPausa) : '—')),
+                DataCell(Text(horas(i.minutos),
+                    style: const TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            DataRow(
+              color: WidgetStateProperty.all(const Color(0xFFF4F6F4)),
+              cells: [
+                const DataCell(
+                    Text('Total', style: TextStyle(fontWeight: FontWeight.w700))),
+                const DataCell(Text('')),
+                const DataCell(Text('')),
+                const DataCell(Text('')),
+                DataCell(Text(horas(p.minEspera),
+                    style: const TextStyle(fontWeight: FontWeight.w700))),
+                DataCell(Text(horas(p.minReparo),
+                    style: const TextStyle(fontWeight: FontWeight.w700))),
+                DataCell(Text(p.minPausa > 0 ? horas(p.minPausa) : '—',
+                    style: const TextStyle(fontWeight: FontWeight.w700))),
+                DataCell(Text(horas(p.minutos),
+                    style: const TextStyle(fontWeight: FontWeight.w800))),
+              ],
+            ),
+          ],
         ),
       );
 
