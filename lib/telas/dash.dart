@@ -100,6 +100,11 @@ class _TelaDashState extends State<TelaDash> {
           _caixa('Por setor', _barras(_lista('por_setor'))),
           const SizedBox(height: 12),
           _caixa('Atendimentos por mecânico', _barras(_lista('por_mecanico'))),
+          const SizedBox(height: 12),
+          _caixa('Em que hora abrem os chamados', _horasDoDia()),
+          const SizedBox(height: 12),
+          _caixa('Onde o mecânico demora mais a chegar',
+              _barras(_lista('espera_por_setor', porMinutos: true))),
         ],
       ),
     );
@@ -250,72 +255,41 @@ class _TelaDashState extends State<TelaDash> {
     );
   }
 
-  Widget _colunas(List<Map<String, dynamic>> dias) {
-    final ultimos = dias.length > 30 ? dias.sublist(dias.length - 30) : dias;
-    final maior = ultimos
-        .map((e) => _i(e['chamados']))
-        .fold<int>(1, (a, b) => a > b ? a : b);
-    String br(String iso) {
-      final p = iso.split('-');
-      return p.length == 3 ? '${p[2]}/${p[1]}' : iso;
+  /// No celular cabem poucas colunas: acima de 16 dias, junta por semana.
+  List<_Col> _serieDias(List<Map<String, dynamic>> dias) {
+    String dd(String iso) => iso.split('-').length == 3 ? iso.split('-')[2] : iso;
+    if (dias.length <= 16) {
+      return [
+        for (final d in dias)
+          _Col(_i(d['chamados']), _i(d['paradas']), dd(d['dia'].toString()))
+      ];
     }
+    final passo = (dias.length / 12).ceil();
+    final fora = <_Col>[];
+    for (var i = 0; i < dias.length; i += passo) {
+      final bloco = dias.sublist(i, (i + passo).clamp(0, dias.length));
+      fora.add(_Col(
+        bloco.fold<int>(0, (a, e) => a + _i(e['chamados'])),
+        bloco.fold<int>(0, (a, e) => a + _i(e['paradas'])),
+        dd(bloco.first['dia'].toString()),
+      ));
+    }
+    return fora;
+  }
 
+  Widget _colunas(List<Map<String, dynamic>> dias) {
+    final cols = _serieDias(dias);
+    final maior = cols.map((e) => e.total).fold<int>(1, (a, b) => a > b ? a : b);
+    final agrupado = dias.length > 16;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: 110,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (final d in ultimos)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 1),
-                    child: Stack(
-                      alignment: Alignment.bottomCenter,
-                      children: [
-                        FractionallySizedBox(
-                          heightFactor: _i(d['chamados']) / maior,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Cores.verde,
-                              borderRadius:
-                                  BorderRadius.vertical(top: Radius.circular(2)),
-                            ),
-                          ),
-                        ),
-                        FractionallySizedBox(
-                          heightFactor: _i(d['paradas']) / maior,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Cores.vermelho,
-                              borderRadius:
-                                  BorderRadius.vertical(top: Radius.circular(2)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(br(ultimos.first['dia'].toString()),
-                style: const TextStyle(fontSize: 11, color: Cores.tinta2)),
-            Text(br(ultimos.last['dia'].toString()),
-                style: const TextStyle(fontSize: 11, color: Cores.tinta2)),
-          ],
-        ),
+        _grafico(cols, maior, Cores.verde, segunda: Cores.vermelho),
         const SizedBox(height: 6),
         Row(children: [
           _ponto(Cores.verde),
-          const Text(' chamados   ', style: TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+          Text(agrupado ? ' chamados agrupados   ' : ' chamados   ',
+              style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
           _ponto(Cores.vermelho),
           const Text(' com máquina parada',
               style: TextStyle(fontSize: 11.5, color: Cores.tinta2)),
@@ -324,10 +298,114 @@ class _TelaDashState extends State<TelaDash> {
     );
   }
 
+  /// Hora em que os chamados são abertos: mostra o pico do turno.
+  Widget _horasDoDia() {
+    final bruto = ((_d?['por_hora'] ?? []) as List).cast<Map<String, dynamic>>();
+    final usadas = bruto.where((h) => _i(h['chamados']) > 0).toList();
+    if (usadas.isEmpty) {
+      return const Text('Sem dados no período.',
+          style: TextStyle(color: Cores.tinta2, fontSize: 13));
+    }
+    final de = _i(usadas.first['hora']), ate = _i(usadas.last['hora']);
+    final faixa = bruto.sublist(de, ate + 1);
+    final cols = [
+      for (final h in faixa) _Col(_i(h['chamados']), 0, '${_i(h['hora'])}')
+    ];
+    final maior = cols.map((e) => e.total).fold<int>(1, (a, b) => a > b ? a : b);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _grafico(cols, maior, Cores.azul),
+        const SizedBox(height: 6),
+        const Text('hora em que o chamado foi aberto',
+            style: TextStyle(fontSize: 11.5, color: Cores.tinta2)),
+      ],
+    );
+  }
+
+  /// Colunas com o número em cima e o rótulo embaixo. Quando não cabe
+  /// tudo, os rótulos aparecem de forma espaçada em vez de embolar.
+  Widget _grafico(List<_Col> cols, int maior, Color cor, {Color? segunda}) {
+    final passo = cols.length <= 8 ? 1 : (cols.length <= 14 ? 2 : 3);
+    bool mostra(int i) => i % passo == 0 || i == cols.length - 1;
+    return SizedBox(
+      height: 132,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < cols.length; i++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    SizedBox(
+                      height: 14,
+                      child: (mostra(i) || cols[i].total == maior) && cols[i].total > 0
+                          ? FittedBox(
+                              child: Text('${cols[i].total}',
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Cores.tinta2)))
+                          : null,
+                    ),
+                    Expanded(
+                      child: Stack(
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          FractionallySizedBox(
+                            heightFactor: (cols[i].total / maior).clamp(0.0, 1.0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: cor,
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(2)),
+                              ),
+                            ),
+                          ),
+                          if (segunda != null)
+                            FractionallySizedBox(
+                              heightFactor: (cols[i].destaque / maior).clamp(0.0, 1.0),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: segunda,
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(2)),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      height: 15,
+                      child: mostra(i)
+                          ? FittedBox(
+                              child: Text(cols[i].rotulo,
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Cores.tinta2)))
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _ponto(Color c) => Container(
       width: 8,
       height: 8,
       decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2)));
+}
+
+class _Col {
+  final int total;
+  final int destaque;
+  final String rotulo;
+  const _Col(this.total, this.destaque, this.rotulo);
 }
 
 class _Fatia {
