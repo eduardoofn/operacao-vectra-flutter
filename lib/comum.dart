@@ -36,15 +36,27 @@ class Usuario {
   bool get ehEngenharia => perfil == 'ENGENHARIA';
   bool get ehGestor => perfil == 'ADMIN';
   bool get ehSupervisao => perfil == 'SUPERVISAO';
+  bool get ehSupMecanica => perfil == 'SUP_MECANICA';
 
   /// Perfil que só acompanha os números: não abre, não atende, não lança nada.
-  bool get soConsulta => ehSupervisao;
+  bool get soConsulta => ehSupervisao || ehSupMecanica;
+
+  /// Quem vê o painel com os números dos chamados.
+  bool get vePainel => ehSupMecanica || ehGestor;
+
+  /// Cadastros que este perfil mantém. O gestor mantém todos.
+  List<String> get cadastros {
+    if (ehGestor) return const ['setores', 'defeitos', 'maquinas', 'funcionarios', 'usuarios'];
+    if (ehSupMecanica) return const ['defeitos', 'maquinas'];
+    return const [];
+  }
 
   String get perfilNome => const {
         'LIDER': 'Líder',
         'MECANICO': 'Mecânico',
         'ENGENHARIA': 'Engenharia',
         'SUPERVISAO': 'Supervisão',
+        'SUP_MECANICA': 'Supervisor Mecânica',
         'ADMIN': 'Gestor',
       }[perfil] ??
       perfil;

@@ -7,6 +7,7 @@ import 'telas/chamados.dart';
 import 'telas/presenca.dart';
 import 'telas/balanceamento.dart';
 import 'telas/cadastros.dart';
+import 'telas/dash.dart';
 import 'notificacoes.dart';
 
 Future<void> main() async {
@@ -155,12 +156,24 @@ class _InicioState extends State<Inicio> {
             TelaBalanceamento(usuario: u)),
       ];
     }
+    if (u.ehSupMecanica) {
+      // Como a Supervisão, mais o painel e os dois cadastros dele.
+      return [
+        _Destino('Painel', Icons.insights_outlined, Icons.insights, TelaDash(usuario: u)),
+        _Destino('Chamados', Icons.build_outlined, Icons.build, TelaChamados(usuario: u)),
+        _Destino('Presença', Icons.groups_outlined, Icons.groups, TelaPresenca(usuario: u)),
+        _Destino('Cadastros', Icons.list_alt_outlined, Icons.list_alt,
+            TelaCadastros(usuario: u)),
+      ];
+    }
     return [
+      _Destino('Painel', Icons.insights_outlined, Icons.insights, TelaDash(usuario: u)),
       _Destino('Chamados', Icons.build_outlined, Icons.build, TelaChamados(usuario: u)),
       _Destino('Presença', Icons.groups_outlined, Icons.groups, TelaPresenca(usuario: u)),
       _Destino(
           'Balanceamento', Icons.balance_outlined, Icons.balance, TelaBalanceamento(usuario: u)),
-      _Destino('Cadastros', Icons.list_alt_outlined, Icons.list_alt, const TelaCadastros()),
+      _Destino('Cadastros', Icons.list_alt_outlined, Icons.list_alt,
+          TelaCadastros(usuario: u)),
     ];
   }
 

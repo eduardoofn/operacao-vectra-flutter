@@ -4,7 +4,8 @@ import '../comum.dart';
 
 /// Cadastros do gestor: setores, máquinas, funcionários e usuários.
 class TelaCadastros extends StatefulWidget {
-  const TelaCadastros({super.key});
+  final Usuario usuario;
+  const TelaCadastros({super.key, required this.usuario});
 
   @override
   State<TelaCadastros> createState() => _TelaCadastrosState();
@@ -34,6 +35,7 @@ const _perfis = {
   'MECANICO': 'Mecânico',
   'ENGENHARIA': 'Engenharia',
   'SUPERVISAO': 'Supervisão',
+  'SUP_MECANICA': 'Supervisor Mecânica',
   'ADMIN': 'Gestor',
 };
 
@@ -74,7 +76,12 @@ class _TelaCadastrosState extends State<TelaCadastros> {
   String? _erro;
   String _carregado = '';   // de qual cadastro são as linhas em tela
 
-  _Tipo get _tipo => _tipos[_indice];
+  /// Só os cadastros que este perfil mantém. Gestor vê todos.
+  late final List<_Tipo> _meusTipos = _tipos
+      .where((t) => widget.usuario.cadastros.contains(t.chave))
+      .toList();
+
+  _Tipo get _tipo => _meusTipos[_indice];
 
   @override
   void initState() {
@@ -158,11 +165,11 @@ class _TelaCadastrosState extends State<TelaCadastros> {
             padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
             child: Row(
               children: [
-                for (var i = 0; i < _tipos.length; i++)
+                for (var i = 0; i < _meusTipos.length; i++)
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
-                      label: Text(_tipos[i].titulo),
+                      label: Text(_meusTipos[i].titulo),
                       selected: i == _indice,
                       selectedColor: const Color(0xFFE6F4E2),
                       onSelected: (_) {
