@@ -49,15 +49,75 @@ class _TelaDashState extends State<TelaDash> {
 
   int _i(Object? v) => v is int ? v : int.tryParse('${v ?? 0}') ?? 0;
 
-  List<_Fatia> _lista(String chave, {bool porMinutos = false}) {
+  List<_Fatia> _lista(String chave, {bool porMinutos = false, String sufixo = ''}) {
     final bruto = (_d?[chave] ?? []) as List;
     return bruto
         .map((e) => _Fatia(
               (e['nome'] ?? '').toString(),
               _i(porMinutos ? e['minutos'] : e['chamados']),
-              porMinutos ? horas(_i(e['minutos'])) : '${_i(e['chamados'])}',
+              porMinutos ? horas(_i(e['minutos'])) : '${_i(e['chamados'])}$sufixo',
             ))
         .toList();
+  }
+
+  /// A média esconde: pode ser todo mundo esperando um pouco, ou
+  /// poucos esperando muito. As faixas mostram qual dos dois é.
+  Widget _faixasEspera() {
+    final lista = ((_d?['espera_faixas'] ?? []) as List).cast<Map<String, dynamic>>();
+    final total = lista.fold<int>(0, (a, e) => a + _i(e['chamados']));
+    if (total == 0) {
+      return const Text('Sem atendimentos concluídos no período.',
+          style: TextStyle(color: Cores.tinta2, fontSize: 13));
+    }
+    final maior = lista.map((e) => _i(e['chamados'])).fold<int>(1, (a, b) => a > b ? a : b);
+    Color cor(String n) => const ['1h a 2h', '2h a 4h', 'mais de 4h'].contains(n)
+        ? Cores.vermelho
+        : n == '30 min a 1h'
+            ? Cores.ambar
+            : Cores.verde;
+    return Column(
+      children: [
+        for (final f in lista)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Text((f['nome'] ?? '').toString(),
+                      style: const TextStyle(fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      height: 13,
+                      child: LayoutBuilder(
+                        builder: (_, c) => Row(children: [
+                          Container(
+                            width: c.maxWidth * (_i(f['chamados']) / maior),
+                            color: cor((f['nome'] ?? '').toString()),
+                          ),
+                          Expanded(child: Container(color: Cores.linha)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 62,
+                  child: Text(
+                      '${_i(f['chamados'])}  ${(_i(f['chamados']) / total * 100).round()}%',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -101,10 +161,10 @@ class _TelaDashState extends State<TelaDash> {
           const SizedBox(height: 12),
           _caixa('Atendimentos por mecânico', _barras(_lista('por_mecanico'))),
           const SizedBox(height: 12),
-          _caixa('Em que hora abrem os chamados', _horasDoDia()),
+          _caixa('Quanto tempo esperaram pelo mecânico', _faixasEspera()),
           const SizedBox(height: 12),
-          _caixa('Onde o mecânico demora mais a chegar',
-              _barras(_lista('espera_por_setor', porMinutos: true))),
+          _caixa('Defeitos que mais param a produção',
+              _barras(_lista('defeito_tempo', porMinutos: true))),
         ],
       ),
     );
@@ -256,8 +316,11 @@ class _TelaDashState extends State<TelaDash> {
   }
 
   /// No celular cabem poucas colunas: acima de 16 dias, junta por semana.
-  List<_Col> _serieDias(List<Map<String, dynamic>> dias) {
+  List<_Col> _serieDias(List<Map<String, dynamic>> bruto) {
     String dd(String iso) => iso.split('-').length == 3 ? iso.split('-')[2] : iso;
+    // sistema novo tem dias vazios no começo: só roubam espaço do gráfico
+    final de = bruto.indexWhere((e) => _i(e['chamados']) > 0);
+    final dias = de > 0 ? bruto.sublist(de) : bruto;
     if (dias.length <= 16) {
       return [
         for (final d in dias)
@@ -280,7 +343,10 @@ class _TelaDashState extends State<TelaDash> {
   Widget _colunas(List<Map<String, dynamic>> dias) {
     final cols = _serieDias(dias);
     final maior = cols.map((e) => e.total).fold<int>(1, (a, b) => a > b ? a : b);
-    final agrupado = dias.length > 16;
+    // depois do corte pode sobrar pouca coisa: a legenda segue o resultado
+    final de = dias.indexWhere((e) => _i(e['chamados']) > 0);
+    final uteis = de > 0 ? dias.length - de : dias.length;
+    final agrupado = cols.length < uteis;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -288,37 +354,12 @@ class _TelaDashState extends State<TelaDash> {
         const SizedBox(height: 6),
         Row(children: [
           _ponto(Cores.verde),
-          Text(agrupado ? ' chamados agrupados   ' : ' chamados   ',
+          Text(agrupado ? ' total agrupado   ' : ' total de chamados   ',
               style: const TextStyle(fontSize: 11.5, color: Cores.tinta2)),
           _ponto(Cores.vermelho),
-          const Text(' com máquina parada',
+          const Text(' destes, com máquina parada',
               style: TextStyle(fontSize: 11.5, color: Cores.tinta2)),
         ]),
-      ],
-    );
-  }
-
-  /// Hora em que os chamados são abertos: mostra o pico do turno.
-  Widget _horasDoDia() {
-    final bruto = ((_d?['por_hora'] ?? []) as List).cast<Map<String, dynamic>>();
-    final usadas = bruto.where((h) => _i(h['chamados']) > 0).toList();
-    if (usadas.isEmpty) {
-      return const Text('Sem dados no período.',
-          style: TextStyle(color: Cores.tinta2, fontSize: 13));
-    }
-    final de = _i(usadas.first['hora']), ate = _i(usadas.last['hora']);
-    final faixa = bruto.sublist(de, ate + 1);
-    final cols = [
-      for (final h in faixa) _Col(_i(h['chamados']), 0, '${_i(h['hora'])}')
-    ];
-    final maior = cols.map((e) => e.total).fold<int>(1, (a, b) => a > b ? a : b);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _grafico(cols, maior, Cores.azul),
-        const SizedBox(height: 6),
-        const Text('hora em que o chamado foi aberto',
-            style: TextStyle(fontSize: 11.5, color: Cores.tinta2)),
       ],
     );
   }
@@ -329,7 +370,7 @@ class _TelaDashState extends State<TelaDash> {
     final passo = cols.length <= 8 ? 1 : (cols.length <= 14 ? 2 : 3);
     bool mostra(int i) => i % passo == 0 || i == cols.length - 1;
     return SizedBox(
-      height: 132,
+      height: 146,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -341,15 +382,31 @@ class _TelaDashState extends State<TelaDash> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     SizedBox(
-                      height: 14,
+                      height: segunda == null ? 14 : 25,
                       child: (mostra(i) || cols[i].total == maior) && cols[i].total > 0
-                          ? FittedBox(
-                              child: Text('${cols[i].total}',
-                                  style: const TextStyle(
-                                      fontSize: 10, color: Cores.tinta2)))
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                FittedBox(
+                                  child: Text('${cols[i].total}',
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: Cores.tinta)),
+                                ),
+                                if (segunda != null)
+                                  FittedBox(
+                                    child: Text('${cols[i].destaque}',
+                                        style: TextStyle(fontSize: 10, color: segunda)),
+                                  ),
+                              ],
+                            )
                           : null,
                     ),
                     Expanded(
+                      // A faixa verde vai até o total e a vermelha cobre
+                      // a base: o verde que sobra à vista é o resto, que
+                      // é justamente a leitura de uma barra empilhada.
                       child: Stack(
                         alignment: Alignment.bottomCenter,
                         children: [
@@ -366,13 +423,7 @@ class _TelaDashState extends State<TelaDash> {
                           if (segunda != null)
                             FractionallySizedBox(
                               heightFactor: (cols[i].destaque / maior).clamp(0.0, 1.0),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: segunda,
-                                  borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(2)),
-                                ),
-                              ),
+                              child: Container(color: segunda),
                             ),
                         ],
                       ),
